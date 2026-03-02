@@ -58,11 +58,24 @@ class HybridRetriever:
         for node in nodes:
             if node.embedding is None:
                 node.embedding = self.embeddings.embed(node.content)
-            sim = self._dot(q_emb, node.embedding)
+            sim = self._cosine_similarity(q_emb, node.embedding)
             scored.append((sim, node))
         return [n for _, n in sorted(scored, reverse=True)]
 
     @staticmethod
-    def _dot(left: list[float], right: list[float]) -> float:
+    def _cosine_similarity(left: list[float], right: list[float]) -> float:
+        """Calculate cosine similarity between two vectors (normalized dot product)."""
+        if not left or not right:
+            return 0.0
+
         size = min(len(left), len(right))
-        return sum(left[i] * right[i] for i in range(size))
+        dot_product = sum(left[i] * right[i] for i in range(size))
+
+        # Calculate magnitudes
+        mag_left = sum(x * x for x in left[:size]) ** 0.5
+        mag_right = sum(x * x for x in right[:size]) ** 0.5
+
+        if mag_left == 0 or mag_right == 0:
+            return 0.0
+
+        return dot_product / (mag_left * mag_right)

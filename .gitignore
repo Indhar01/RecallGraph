@@ -39,6 +39,7 @@ env/
 .DS_Store
 IMPROVEMENTS_SUMMARY.md
 archive_2026-03-02/
+feedback.md
 
 # Testing
 .pytest_cache/
