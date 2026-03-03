@@ -41,6 +41,7 @@ IMPROVEMENTS_SUMMARY.md
 archive_2026-03-02/
 feedback.md
 MIGRATION_TO_RECALLGRAPH.md
+CI_FIX_SUMMARY.md
 
 # Testing
 .pytest_cache/
