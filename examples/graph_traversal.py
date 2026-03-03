@@ -1,6 +1,6 @@
 """Example demonstrating graph traversal with wikilinks."""
 
-from mnemo import MemoryKernel, MemoryType
+from recallgraph import MemoryKernel, MemoryType
 
 kernel = MemoryKernel("~/my-vault")
 

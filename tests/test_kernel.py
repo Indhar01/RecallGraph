@@ -2,7 +2,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from mnemo import MemoryKernel, MemoryType
+from recallgraph import MemoryKernel, MemoryType
 
 
 class KernelTests(unittest.TestCase):

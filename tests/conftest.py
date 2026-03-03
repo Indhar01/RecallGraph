@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from mnemo import MemoryKernel, MemoryType
+from recallgraph import MemoryKernel, MemoryType
 
 
 @pytest.fixture
