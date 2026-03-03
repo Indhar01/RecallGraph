@@ -43,6 +43,24 @@ class VaultGraph:
                         queue.append((nxt, d + 1))
         return result
 
+    def remove_node(self, node_id: str):
+        """Remove a node from the graph (e.g., when a file is deleted)."""
+        if node_id in self._nodes:
+            # Remove the node itself
+            del self._nodes[node_id]
+
+            # Remove from adjacency list
+            if node_id in self._adjacency:
+                del self._adjacency[node_id]
+
+            # Remove any references to this node in other adjacency lists
+            for adj_set in self._adjacency.values():
+                adj_set.discard(node_id)
+
+    def all_nodes(self) -> list[MemoryNode]:
+        """Return all nodes in the graph."""
+        return list(self._nodes.values())
+
     def filter(self, tags=None, memory_type=None, min_salience=0.0) -> list[MemoryNode]:
         results = []
         for node in self._nodes.values():

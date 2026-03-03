@@ -18,7 +18,8 @@ class MemoryKernel:
         self.vault_path.mkdir(parents=True, exist_ok=True)
 
         self.graph = VaultGraph()
-        self.indexer = VaultIndexer(self.vault_path)
+        self.embedding_adapter = embedding_adapter
+        self.indexer = VaultIndexer(self.vault_path, embedding_adapter=embedding_adapter)
         self.retriever = HybridRetriever(self.graph, embedding_adapter=embedding_adapter)
 
     @staticmethod
