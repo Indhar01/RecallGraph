@@ -1,10 +1,10 @@
 ## Architecture Overview
 
-Mnemo-Vault is built around a graph-based knowledge representation with hybrid retrieval capabilities.
+MemoGraph is built around a graph-based knowledge representation with hybrid retrieval capabilities.
 
 ### Core Components
 
-#### 1. Memory Kernel (`mnemo/core/kernel.py`)
+#### 1. Memory Kernel (`memograph/core/kernel.py`)
 
 The central orchestrator that provides the main API:
 - `ingest()`: Index markdown files from the vault

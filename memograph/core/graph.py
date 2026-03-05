@@ -1,18 +1,52 @@
 # core/graph.py
 from collections import defaultdict, deque
 
+from .entity import EntityNode, ExtractionResult
 from .node import MemoryNode
 
 
 class VaultGraph:
     def __init__(self):
         self._nodes: dict[str, MemoryNode] = {}
+        self._entities: dict[str, EntityNode] = {}  # Store extracted entities
+        self._extraction_results: dict[str, ExtractionResult] = {}  # Memory ID -> ExtractionResult
         self._adjacency: dict[str, set[str]] = defaultdict(set)
+        self._entity_adjacency: dict[str, set[str]] = defaultdict(set)  # Entity relationships
 
     def add_node(self, node: MemoryNode):
         self._nodes[node.id] = node
         for link in node.links:
             self._adjacency[node.id].add(link)
+
+    def add_entity(self, entity: EntityNode):
+        """Add an extracted entity to the graph."""
+        self._entities[entity.id] = entity
+        # Link entity to its source memory
+        if entity.source_memory_id in self._nodes:
+            self._entity_adjacency[entity.source_memory_id].add(entity.id)
+        # Link entity to related entities
+        for related_id in entity.related_entities:
+            self._entity_adjacency[entity.id].add(related_id)
+
+    def add_extraction_result(self, result: ExtractionResult):
+        """Add all entities from an extraction result."""
+        self._extraction_results[result.memory_id] = result
+        for entity in result.all_entities():
+            self.add_entity(entity)
+
+    def get_entities_for_memory(self, memory_id: str) -> list[EntityNode]:
+        """Get all entities extracted from a specific memory."""
+        if memory_id in self._extraction_results:
+            return self._extraction_results[memory_id].all_entities()
+        return []
+
+    def get_entity(self, entity_id: str) -> EntityNode | None:
+        """Get a specific entity by ID."""
+        return self._entities.get(entity_id)
+
+    def get_entities_by_type(self, entity_type) -> list[EntityNode]:
+        """Get all entities of a specific type."""
+        return [e for e in self._entities.values() if e.entity_type == entity_type]
 
     def build_backlinks(self):
         """Populate backlinks after all nodes are loaded."""
@@ -58,8 +92,12 @@ class VaultGraph:
                 adj_set.discard(node_id)
 
     def all_nodes(self) -> list[MemoryNode]:
-        """Return all nodes in the graph."""
+        """Return all memory nodes in the graph."""
         return list(self._nodes.values())
+
+    def all_entities(self) -> list[EntityNode]:
+        """Return all entities in the graph."""
+        return list(self._entities.values())
 
     def filter(self, tags=None, memory_type=None, min_salience=0.0) -> list[MemoryNode]:
         results = []

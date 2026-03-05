@@ -10,6 +10,12 @@ A graph-based memory system for LLMs with intelligent retrieval. MemoGraph provi
 
 ## ✨ Features
 
+- **🤖 Smart Auto-Organization Engine**: Automatically extract structured information from memories using LLMs
+  - Topics, subtopics, and recurring themes
+  - People with roles and organizations
+  - Action items with assignees and deadlines
+  - Decisions, questions, and sentiment analysis
+  - Risks, ideas, and timeline events
 - **Graph-Based Memory**: Navigate knowledge using bidirectional wikilinks and backlinks
 - **Hybrid Retrieval**: Combines keyword matching, graph traversal, and optional vector embeddings
 - **Markdown-Native**: Human-readable markdown files with YAML frontmatter
@@ -232,6 +238,7 @@ We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) f
 
 ## 📚 Documentation
 
+- **[Smart Auto-Organization Engine](docs/SMART_AUTO_ORGANIZATION.md)** - Automatic entity extraction guide
 - **[Contributing Guide](CONTRIBUTING.md)** - How to contribute to the project
 - **[Code of Conduct](CODE_OF_CONDUCT.md)** - Community guidelines
 - **[Security Policy](SECURITY.md)** - Security reporting and best practices

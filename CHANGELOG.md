@@ -14,6 +14,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Pre-commit configuration for code quality
 - Comprehensive test configuration
 - Development dependencies in pyproject.toml
+- Repository optimizations for better discoverability
+- Enhanced documentation and examples
 
 ### Changed
 - Improved project structure and organization
@@ -22,12 +24,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - Various code quality improvements
-
-## [Unreleased]
-
-### Added
-- Repository optimizations for better discoverability
-- Enhanced documentation and examples
 
 ## [0.0.2] - 2026-03-02
 
