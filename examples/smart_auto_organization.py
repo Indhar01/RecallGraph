@@ -57,49 +57,49 @@ def main():
     kernel.remember(
         title="Q1 Product Planning Meeting",
         content="""
-        Meeting with Sarah Johnson (Product Manager) and Alex Chen (Tech Lead) from the 
+        Meeting with Sarah Johnson (Product Manager) and Alex Chen (Tech Lead) from the
         Engineering team.
-        
-        We discussed the new analytics dashboard feature for our SaaS platform. Sarah wants 
+
+        We discussed the new analytics dashboard feature for our SaaS platform. Sarah wants
         to launch by March 15th to align with the marketing campaign.
-        
+
         **Decisions Made:**
         - We'll use React and D3.js for the frontend visualization
         - Alex will lead the technical implementation
         - We'll use PostgreSQL for storing analytics data
-        
+
         **Action Items:**
         - Alex to create technical design document (due Feb 28th) - HIGH PRIORITY
         - Sarah to prepare go-to-market materials (due March 1st)
         - John to set up CI/CD pipeline (due March 5th)
         - Everyone to review security requirements
-        
+
         **Open Questions:**
         - Do we need real-time updates or is near-real-time sufficient?
         - What's the total budget allocated for this project?
         - Should we include mobile responsive design in v1?
-        
-        The meeting was very productive overall. There's some concern about the aggressive 
+
+        The meeting was very productive overall. There's some concern about the aggressive
         timeline, but the team is excited about the feature.
-        
+
         **References:**
         - Figma designs: https://figma.com/file/xyz123
         - API documentation: https://api.example.com/docs/analytics
         - Competitor analysis: https://docs.google.com/spreadsheets/abc
-        
+
         **Ideas Discussed:**
         - Could add AI-powered insights and anomaly detection (high feasibility)
         - Mobile app version might be valuable for executives (medium feasibility)
         - Integration with Slack for notifications (low effort, high value)
         - Custom dashboard builder for enterprise clients
-        
+
         **Risks Identified:**
         - Timeline is very aggressive given current team capacity (HIGH PRIORITY)
         - D3.js learning curve might slow down initial development (MEDIUM)
         - Third-party API rate limits could be an issue (MEDIUM)
-        
+
         **Recurring Themes:**
-        This continues the pattern we've seen across Q4 projects - aggressive timelines 
+        This continues the pattern we've seen across Q4 projects - aggressive timelines
         with resource constraints. We need to address staffing in the next planning cycle.
         """,
         memory_type=MemoryType.EPISODIC,
@@ -109,8 +109,8 @@ def main():
     # Ingest memories with auto-extraction
     print("\n🔄 Ingesting memories and extracting entities...")
     stats = kernel.ingest(auto_extract=True)
-    
-    print(f"\n📊 Ingestion Statistics:")
+
+    print("\n📊 Ingestion Statistics:")
     print(f"   - Memories indexed: {stats['indexed']}")
     print(f"   - Total memories: {stats['total']}")
     print(f"   - Entities extracted: {stats['entities_extracted']}")
@@ -137,7 +137,7 @@ def main():
     risks = kernel.get_entities(memory_id=memory.id, entity_type=EntityType.RISK)
     ideas = kernel.get_entities(memory_id=memory.id, entity_type=EntityType.IDEA)
     refs = kernel.get_entities(memory_id=memory.id, entity_type=EntityType.REFERENCE)
-    
+
     # Display extracted topics
     if topics:
         print(f"\n📌 Topics ({len(topics)}):")
@@ -205,9 +205,9 @@ def main():
     # Demonstrate manual extraction for a specific memory
     print("\n\n🔍 Manual Extraction Example:")
     print("   You can also manually extract from a specific memory...")
-    
+
     extraction_stats = kernel.extract_from_memory(memory.id)
-    print(f"   Extraction complete!")
+    print("   Extraction complete!")
     print(f"   - Topics: {extraction_stats['topics']}")
     print(f"   - People: {extraction_stats['people']}")
     print(f"   - Action Items: {extraction_stats['action_items']}")

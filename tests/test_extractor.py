@@ -2,7 +2,6 @@
 """Tests for the Smart Auto-Organization Engine."""
 
 import json
-from datetime import datetime
 
 import pytest
 
@@ -56,31 +55,31 @@ def sample_memory():
         title="Product Planning Meeting",
         content="""
         Meeting with Sarah (product manager) and John (tech lead) from Engineering team.
-        
+
         We discussed the new analytics dashboard feature. Sarah wants to launch by March 15th.
-        
+
         Decisions:
         - We'll use React for the frontend
         - John will lead the implementation
-        
+
         Action items:
         - John to create technical design doc (due March 1st)
         - Sarah to prepare marketing materials
-        
+
         Open questions:
         - Do we need real-time updates?
         - What's the budget for this project?
-        
+
         The meeting was productive overall. Some concerns about the tight timeline.
-        
+
         References:
         - Figma design: https://figma.com/design/123
         - API docs: https://api.example.com/docs
-        
+
         Ideas:
         - Could add AI-powered insights
         - Mobile app version might be valuable
-        
+
         Risks:
         - Timeline is aggressive
         - Team capacity might be an issue
