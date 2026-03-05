@@ -1,4 +1,3 @@
-
 # core/extractor.py
 import json
 import re
@@ -215,9 +214,7 @@ class SmartAutoOrganizer:
             print(f"Response: {response[:500]}...")
             return {}
 
-    def _create_extraction_result(
-        self, memory_id: str, data: dict[str, Any]
-    ) -> ExtractionResult:
+    def _create_extraction_result(self, memory_id: str, data: dict[str, Any]) -> ExtractionResult:
         """Convert parsed JSON data into entity objects."""
         result = ExtractionResult(memory_id=memory_id)
 
@@ -247,7 +244,9 @@ class SmartAutoOrganizer:
 
         # Extract people
         for person_data in data.get("people", []):
-            role = self._parse_enum(person_data.get("role"), ParticipantRole, ParticipantRole.PARTICIPANT)
+            role = self._parse_enum(
+                person_data.get("role"), ParticipantRole, ParticipantRole.PARTICIPANT
+            )
             person = PersonEntity(
                 id=f"{memory_id}:person:{self._slugify(person_data['name'])}",
                 entity_type=EntityType.PERSON,
@@ -273,7 +272,9 @@ class SmartAutoOrganizer:
 
         # Extract action items
         for action_data in data.get("action_items", []):
-            priority = self._parse_enum(action_data.get("priority"), PriorityLevel, PriorityLevel.MEDIUM)
+            priority = self._parse_enum(
+                action_data.get("priority"), PriorityLevel, PriorityLevel.MEDIUM
+            )
             status = self._parse_enum(action_data.get("status"), StatusType, StatusType.OPEN)
             deadline = self._parse_date(action_data.get("deadline"))
 
@@ -305,7 +306,9 @@ class SmartAutoOrganizer:
 
         # Extract questions
         for question_data in data.get("questions", []):
-            status = self._parse_enum(question_data.get("status"), StatusType, StatusType.UNRESOLVED)
+            status = self._parse_enum(
+                question_data.get("status"), StatusType, StatusType.UNRESOLVED
+            )
             question = QuestionEntity(
                 id=f"{memory_id}:question:{self._slugify(question_data['question'][:50])}",
                 entity_type=EntityType.QUESTION,
@@ -320,7 +323,9 @@ class SmartAutoOrganizer:
         # Extract sentiment
         sentiment_data = data.get("sentiment", {})
         if sentiment_data and sentiment_data.get("type"):
-            sentiment_type = self._parse_enum(sentiment_data.get("type"), SentimentType, SentimentType.NEUTRAL)
+            sentiment_type = self._parse_enum(
+                sentiment_data.get("type"), SentimentType, SentimentType.NEUTRAL
+            )
             sentiment = SentimentEntity(
                 id=f"{memory_id}:sentiment",
                 entity_type=EntityType.SENTIMENT,
@@ -374,7 +379,9 @@ class SmartAutoOrganizer:
 
         # Extract risks
         for risk_data in data.get("risks", []):
-            priority = self._parse_enum(risk_data.get("priority"), PriorityLevel, PriorityLevel.MEDIUM)
+            priority = self._parse_enum(
+                risk_data.get("priority"), PriorityLevel, PriorityLevel.MEDIUM
+            )
             risk = RiskEntity(
                 id=f"{memory_id}:risk:{self._slugify(risk_data['description'][:50])}",
                 entity_type=EntityType.RISK,
@@ -414,7 +421,11 @@ class SmartAutoOrganizer:
         try:
             # Handle both "low" and "LOW" formats
             normalized = value.upper() if hasattr(enum_class, value.upper()) else value.lower()
-            return enum_class[normalized.upper()] if hasattr(enum_class, normalized.upper()) else enum_class(normalized)
+            return (
+                enum_class[normalized.upper()]
+                if hasattr(enum_class, normalized.upper())
+                else enum_class(normalized)
+            )
         except (KeyError, ValueError):
             return default
 

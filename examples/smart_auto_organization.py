@@ -149,8 +149,8 @@ def main():
     if people:
         print(f"\n👥 People ({len(people)}):")
         for person in people:
-            role = person.metadata.get('role', 'unknown')
-            org = person.metadata.get('organization', 'N/A')
+            role = person.metadata.get("role", "unknown")
+            org = person.metadata.get("organization", "N/A")
             print(f"   - {person.name} ({role})")
             print(f"     Organization: {org}")
 
@@ -158,9 +158,9 @@ def main():
     if actions:
         print(f"\n✅ Action Items ({len(actions)}):")
         for action in actions:
-            assignee = action.metadata.get('assignee', 'Unassigned')
-            deadline = action.metadata.get('deadline', 'No deadline')
-            priority = action.metadata.get('priority', 'medium')
+            assignee = action.metadata.get("assignee", "Unassigned")
+            deadline = action.metadata.get("deadline", "No deadline")
+            priority = action.metadata.get("priority", "medium")
             print(f"   - [{priority.upper()}] {action.description[:60]}...")
             print(f"     Assignee: {assignee}, Deadline: {deadline}")
 
@@ -168,7 +168,7 @@ def main():
     if decisions:
         print(f"\n🎯 Decisions ({len(decisions)}):")
         for decision in decisions:
-            maker = decision.metadata.get('decision_maker', 'Team')
+            maker = decision.metadata.get("decision_maker", "Team")
             print(f"   - {decision.description}")
             print(f"     Decision maker: {maker}")
 
@@ -176,15 +176,15 @@ def main():
     if questions:
         print(f"\n❓ Open Questions ({len(questions)}):")
         for q in questions:
-            status = q.metadata.get('status', 'unresolved')
+            status = q.metadata.get("status", "unresolved")
             print(f"   - [{status.upper()}] {q.description}")
 
     # Display risks
     if risks:
         print(f"\n⚠️  Risks ({len(risks)}):")
         for risk in risks:
-            priority = risk.metadata.get('priority', 'medium')
-            mitigation = risk.metadata.get('mitigation', 'None')
+            priority = risk.metadata.get("priority", "medium")
+            mitigation = risk.metadata.get("mitigation", "None")
             print(f"   - [{priority.upper()}] {risk.description}")
             print(f"     Mitigation: {mitigation}")
 
@@ -192,14 +192,14 @@ def main():
     if ideas:
         print(f"\n💡 Ideas ({len(ideas)}):")
         for idea in ideas:
-            feasibility = idea.metadata.get('feasibility', 'unknown')
+            feasibility = idea.metadata.get("feasibility", "unknown")
             print(f"   - {idea.description[:60]}... (Feasibility: {feasibility})")
 
     # Display references
     if refs:
         print(f"\n🔗 References ({len(refs)}):")
         for ref in refs:
-            url = ref.metadata.get('url', 'N/A')
+            url = ref.metadata.get("url", "N/A")
             print(f"   - {ref.name}: {url}")
 
     # Demonstrate manual extraction for a specific memory

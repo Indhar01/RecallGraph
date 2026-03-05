@@ -1,4 +1,3 @@
-
 """Tests for the Smart Auto-Organization Engine."""
 
 import json
@@ -111,9 +110,7 @@ def extraction_response():
             {"name": "Sarah", "role": "organizer", "organization": "Product Team"},
             {"name": "John", "role": "decision_maker", "organization": "Engineering"},
         ],
-        "organizations": [
-            {"name": "Engineering team", "department": "Engineering"}
-        ],
+        "organizations": [{"name": "Engineering team", "department": "Engineering"}],
         "action_items": [
             {
                 "description": "Create technical design doc",
