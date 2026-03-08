@@ -868,13 +868,13 @@ class MemoryKernel:
                     meta=meta,
                 )
                 successful_paths.append(path)
-                logger.debug(f"Batch [{idx+1}/{len(memories)}]: Created {title}")
+                logger.debug(f"Batch [{idx + 1}/{len(memories)}]: Created {title}")
 
             except Exception as e:
                 error_info = (memory_data, e)
                 errors.append(error_info)
                 logger.warning(
-                    f"Batch [{idx+1}/{len(memories)}]: Failed to create "
+                    f"Batch [{idx + 1}/{len(memories)}]: Failed to create "
                     f"'{memory_data.get('title', 'unknown')}': {e}"
                 )
 
@@ -886,7 +886,7 @@ class MemoryKernel:
                     break
 
         logger.info(
-            f"Batch creation complete: {len(successful_paths)} created, " f"{len(errors)} failed"
+            f"Batch creation complete: {len(successful_paths)} created, {len(errors)} failed"
         )
 
         return successful_paths, errors
@@ -1006,14 +1006,13 @@ class MemoryKernel:
                 memory_path.write_text(new_frontmatter + body + "\n", encoding="utf-8")
 
                 successful_ids.append(memory_id)
-                logger.debug(f"Batch update [{idx+1}/{len(updates)}]: Updated {memory_id}")
+                logger.debug(f"Batch update [{idx + 1}/{len(updates)}]: Updated {memory_id}")
 
             except Exception as e:
                 error_info = (memory_id, e)
                 errors.append(error_info)
                 logger.warning(
-                    f"Batch update [{idx+1}/{len(updates)}]: Failed to update "
-                    f"'{memory_id}': {e}"
+                    f"Batch update [{idx + 1}/{len(updates)}]: Failed to update '{memory_id}': {e}"
                 )
 
                 if not continue_on_error:
@@ -1023,9 +1022,7 @@ class MemoryKernel:
                     )
                     break
 
-        logger.info(
-            f"Batch update complete: {len(successful_ids)} updated, " f"{len(errors)} failed"
-        )
+        logger.info(f"Batch update complete: {len(successful_ids)} updated, {len(errors)} failed")
 
         return successful_ids, errors
 
