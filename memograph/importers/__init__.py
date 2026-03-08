@@ -10,7 +10,7 @@ Supported platforms:
 - Gemini (Google)
 """
 
-from .chat_models import Conversation, Message, ConversationThread
+from .chat_models import Conversation, ConversationThread, Message
 from .chatgpt import ChatGPTImporter
 from .claude import ClaudeImporter
 from .gemini import GeminiImporter

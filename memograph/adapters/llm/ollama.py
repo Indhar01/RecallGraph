@@ -43,4 +43,5 @@ class OllamaLLMClient:
                 "Cannot reach Ollama. Start it first (e.g., `ollama serve`) "
                 f"and verify base URL {self.url}."
             ) from exc
-        return body.get("response", "").strip()
+        response_text: str = body.get("response", "")
+        return response_text.strip()

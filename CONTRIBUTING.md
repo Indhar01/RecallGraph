@@ -119,16 +119,16 @@ def retrieve_nodes(
     top_k: int = 8,
 ) -> list[MemoryNode]:
     """Retrieve relevant memory nodes for a query.
-    
+
     Args:
         query: Natural language query string
         tags: Optional list of tags to filter memories
         depth: Maximum graph traversal depth (default: 2)
         top_k: Maximum number of memories to retrieve (default: 8)
-    
+
     Returns:
         List of relevant MemoryNode objects
-    
+
     Example:
         >>> kernel = MemoryKernel("~/vault")
         >>> nodes = kernel.retrieve_nodes(
@@ -196,12 +196,12 @@ def test_context_window_respects_token_limit():
     with tempfile.TemporaryDirectory() as tmp:
         kernel = MemoryKernel(tmp)
         kernel.remember("Title", "content" * 1000)
-        
+
         context = kernel.context_window(
             query="test",
             token_limit=100
         )
-        
+
         # Rough estimation: 100 tokens ≈ 380 characters
         assert len(context) < 500
 ```

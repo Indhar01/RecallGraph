@@ -102,19 +102,19 @@ class MemoryNode:
     title: str               # From frontmatter or filename
     content: str             # Markdown body
     memory_type: MemoryType  # episodic, semantic, procedural, fact
-    
+
     # Graph relationships
     links: list[str]         # Outgoing wikilinks
     backlinks: list[str]     # Incoming links (computed)
     tags: list[str]          # Tags from content
-    
+
     # Metadata
     salience: float          # Importance score (0.0-1.0)
     access_count: int        # Usage tracking
     last_accessed: datetime
     created_at: datetime
     modified_at: datetime
-    
+
     # Optional
     embedding: list[float]   # Vector representation
 ```

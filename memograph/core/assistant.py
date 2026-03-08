@@ -97,13 +97,13 @@ def run_answer(
     if provider == "ollama":
         from ..adapters.llm.ollama import OllamaLLMClient, OllamaLLMConfig
 
-        client = OllamaLLMClient(base_url=base_url)
-        config = OllamaLLMConfig(
+        ollama_client = OllamaLLMClient(base_url=base_url)
+        ollama_config = OllamaLLMConfig(
             model=model or "llama3.1:8b",
             max_tokens=max_tokens,
             temperature=temperature,
         )
-        return client.generate(prompt=prompt, config=config)
+        return ollama_client.generate(prompt=prompt, config=ollama_config)
 
     raise ValueError(f"Unsupported provider: {provider}")
 

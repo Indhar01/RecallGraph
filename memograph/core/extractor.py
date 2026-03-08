@@ -208,7 +208,8 @@ class SmartAutoOrganizer:
             json_str = json_match.group(0) if json_match else response
 
         try:
-            return json.loads(json_str)
+            data: dict[str, Any] = json.loads(json_str)
+            return data
         except json.JSONDecodeError as e:
             print(f"Failed to parse JSON: {e}")
             print(f"Response: {response[:500]}...")
@@ -421,12 +422,12 @@ class SmartAutoOrganizer:
         try:
             # Handle both "low" and "LOW" formats
             normalized = value.upper() if hasattr(enum_class, value.upper()) else value.lower()
-            return (
-                enum_class[normalized.upper()]
-                if hasattr(enum_class, normalized.upper())
-                else enum_class(normalized)
-            )
-        except (KeyError, ValueError):
+            # Use getattr to access enum members dynamically
+            if hasattr(enum_class, normalized.upper()):
+                return getattr(enum_class, normalized.upper())
+            else:
+                return enum_class(normalized)
+        except (KeyError, ValueError, AttributeError):
             return default
 
     @staticmethod

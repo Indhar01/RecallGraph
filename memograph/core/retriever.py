@@ -12,14 +12,13 @@ class HybridRetriever:
     def retrieve(
         self,
         query: str,
-        seed_ids: list[str] = None,
-        tags: list[str] = None,
-        memory_type: MemoryType = None,
+        seed_ids: list[str] | None = None,
+        tags: list[str] | None = None,
+        memory_type: MemoryType | None = None,
         depth: int = 2,
         top_k: int = 10,
         min_salience: float = 0.0,
     ) -> list[MemoryNode]:
-
         candidates: dict[str, MemoryNode] = {}
 
         # 1. Graph traversal from seeds
@@ -43,14 +42,15 @@ class HybridRetriever:
                 candidates[n.id] = n
 
         # 3. Optional: re-rank with vector similarity
+        results_list: list[MemoryNode]
         if self.embeddings and query:
-            candidates = self._rerank(query, list(candidates.values()))
+            results_list = self._rerank(query, list(candidates.values()))
         else:
-            candidates = sorted(
+            results_list = sorted(
                 candidates.values(), key=lambda n: (n.salience, n.access_count), reverse=True
             )
 
-        return candidates[:top_k]
+        return results_list[:top_k]
 
     def _rerank(self, query: str, nodes: list[MemoryNode]) -> list[MemoryNode]:
         q_emb = self.embeddings.embed(query)
@@ -78,4 +78,5 @@ class HybridRetriever:
         if mag_left == 0 or mag_right == 0:
             return 0.0
 
-        return dot_product / (mag_left * mag_right)
+        similarity: float = dot_product / (mag_left * mag_right)
+        return similarity

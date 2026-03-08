@@ -19,4 +19,5 @@ class OllamaEmbeddingAdapter(EmbeddingAdapter):
         )
         with request.urlopen(req, timeout=30) as response:
             body = json.loads(response.read().decode("utf-8"))
-        return body["embedding"]
+        embedding: list[float] = body["embedding"]
+        return embedding

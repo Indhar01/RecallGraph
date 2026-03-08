@@ -23,7 +23,8 @@ class VaultIndexer:
     def _load_cache(self) -> dict[str, float]:
         if self.cache_path.exists():
             try:
-                return json.loads(self.cache_path.read_text())
+                cache_data: dict[str, float] = json.loads(self.cache_path.read_text())
+                return cache_data
             except json.JSONDecodeError:
                 return {}
         return {}
@@ -36,7 +37,10 @@ class VaultIndexer:
         """Load cached embeddings from disk."""
         if self.embeddings_cache_path.exists():
             try:
-                return json.loads(self.embeddings_cache_path.read_text())
+                embeddings_data: dict[str, list[float]] = json.loads(
+                    self.embeddings_cache_path.read_text()
+                )
+                return embeddings_data
             except json.JSONDecodeError:
                 return {}
         return {}

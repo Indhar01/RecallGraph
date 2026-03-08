@@ -34,7 +34,9 @@ class MemoryNode:
     # Optional: set by embedding adapter
     embedding: list[float] | None = None
 
-    def to_dict(self, include_graph: bool = False, include_embedding: bool = False) -> dict[str, Any]:
+    def to_dict(
+        self, include_graph: bool = False, include_embedding: bool = False
+    ) -> dict[str, Any]:
         """
         Serialize the memory node to a dictionary.
 
@@ -71,7 +73,7 @@ class MemoryNode:
             data["backlinks"] = self.backlinks
 
         if include_embedding and self.embedding is not None:
-            data["embedding"] = self.embedding
+            data["embedding"] = self.embedding  # type: ignore[assignment]
 
         return data
 
@@ -130,16 +132,13 @@ class MemoryNode:
             )
 
         last_accessed = parse_datetime(
-            data.get("last_accessed", datetime.now(timezone.utc)),
-            "last_accessed"
+            data.get("last_accessed", datetime.now(timezone.utc)), "last_accessed"
         )
         created_at = parse_datetime(
-            data.get("created_at", datetime.now(timezone.utc)),
-            "created_at"
+            data.get("created_at", datetime.now(timezone.utc)), "created_at"
         )
         modified_at = parse_datetime(
-            data.get("modified_at", datetime.now(timezone.utc)),
-            "modified_at"
+            data.get("modified_at", datetime.now(timezone.utc)), "modified_at"
         )
 
         return cls(

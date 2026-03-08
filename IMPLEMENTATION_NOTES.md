@@ -1,7 +1,7 @@
 
 # MemoGraph Feedback Implementation - Summary
 
-**Date**: 2026-03-07  
+**Date**: 2026-03-07
 **Based on**: MemoGraph Package Integration Feedback & Improvement Recommendations
 
 This document summarizes the improvements made to the MemoGraph package based on production integration feedback.
@@ -27,7 +27,7 @@ This implementation addresses **all critical and high-priority feedback items** 
 
 **Problem**: [`MemoryKernel.remember()`](memograph/core/kernel.py:194) didn't accept `salience` parameter despite [`MemoryNode`](memograph/core/node.py:10) having this attribute.
 
-**Solution**: 
+**Solution**:
 - ✅ Added `salience: float = 0.5` parameter to [`remember()`](memograph/core/kernel.py:200)
 - ✅ Added validation: `0.0 <= salience <= 1.0`
 - ✅ Stores salience in YAML frontmatter
@@ -69,23 +69,23 @@ kernel.remember(
 def remember(...) -> str:
     """
     One-line summary.
-    
+
     Detailed explanation of what the method does and when to use it.
-    
+
     Args:
         param1: Description with type, constraints, and defaults
         param2: Description with examples and edge cases
-        
+
     Returns:
         Description of return value with type and structure
-        
+
     Raises:
         ExceptionType: When and why this exception occurs
-        
+
     Example:
         >>> # Basic usage
         >>> result = method(args)
-        >>> 
+        >>>
         >>> # Advanced usage with all options
         >>> result = method(
         ...     arg1=value1,
@@ -116,7 +116,7 @@ class MemoryKernel:
         auto_extract: bool = False,
     ) -> None:
         ...
-    
+
     def remember(
         self,
         title: str,
@@ -127,7 +127,7 @@ class MemoryKernel:
         meta: Optional[dict[str, Any]] = None,
     ) -> str:
         ...
-    
+
     def retrieve_nodes(
         self,
         query: str,
@@ -141,8 +141,8 @@ class MemoryKernel:
 #### File: [`memograph/core/node.py`](memograph/core/node.py)
 ```python
 def to_dict(
-    self, 
-    include_graph: bool = False, 
+    self,
+    include_graph: bool = False,
     include_embedding: bool = False
 ) -> dict[str, Any]:
     ...
@@ -231,7 +231,7 @@ if not isinstance(top_k, int) or top_k <= 0:
 # Required fields validation
 required_fields = ["id", "title", "content"]
 for field_name in required_fields:
-    if field_name not in 
+    if field_name not in
         raise ValueError(
             f"Missing required field '{field_name}'. "
             f"Required fields: {', '.join(required_fields)}"
@@ -257,17 +257,17 @@ raise TypeError(
 
 ```python
 def to_dict(
-    self, 
-    include_graph: bool = False, 
+    self,
+    include_graph: bool = False,
     include_embedding: bool = False
 ) -> dict[str, Any]:
     """
     Serialize the memory node to a dictionary.
-    
+
     Args:
         include_graph: If True, include links and backlinks
         include_embedding: If True, include embedding vector
-        
+
     Returns:
         Dictionary representation of the memory node
     """
@@ -285,21 +285,21 @@ def to_dict(
         "source_path": self.source_path,
         "frontmatter": self.frontmatter,
     }
-    
+
     if include_graph:
         data["links"] = self.links
         data["backlinks"] = self.backlinks
-    
+
     if include_embedding and self.embedding is not None:
         data["embedding"] = self.embedding
-    
+
     return data
 
 @classmethod
 def from_dict(cls,  dict[str, Any]) -> "MemoryNode":
     """
     Deserialize a memory node from a dictionary.
-    
+
     Validates required fields and handles type conversions.
     """
     # Validation and parsing logic...

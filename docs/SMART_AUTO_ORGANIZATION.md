@@ -163,7 +163,7 @@ person = PersonEntity(
 
 Tasks with metadata.
 
-**Priority Levels:** `CRITICAL`, `HIGH`, `MEDIUM`, `LOW`  
+**Priority Levels:** `CRITICAL`, `HIGH`, `MEDIUM`, `LOW`
 **Status:** `OPEN`, `IN_PROGRESS`, `COMPLETED`, `BLOCKED`
 
 ```python
@@ -329,7 +329,7 @@ result = organizer.extract(memory_node)
 # Access specific entity types
 for topic in result.topics:
     print(f"Topic: {topic.name}")
-    
+
 for action in result.action_items:
     print(f"Action: {action.description}")
     print(f"  Assignee: {action.assignee}")

@@ -89,3 +89,7 @@ build/
 
 # uv
 uv.lock
+
+pre-push.ps1
+
+PRE-PUSH-GUIDE.md

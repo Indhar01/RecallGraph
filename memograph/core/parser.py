@@ -3,6 +3,7 @@ import contextlib
 import re
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 import yaml
 
@@ -16,7 +17,7 @@ FRONTMATTER_RE = re.compile(r"^---\r?\n(.*?)\r?\n---\r?\n", re.DOTALL)
 
 def parse_file(path: Path, vault_root: Path) -> MemoryNode:
     raw = path.read_text(encoding="utf-8").lstrip("\ufeff")
-    frontmatter = {}
+    frontmatter: dict[str, Any] = {}
     content = raw
 
     if m := FRONTMATTER_RE.match(raw):

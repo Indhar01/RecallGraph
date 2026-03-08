@@ -5,7 +5,7 @@ import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, Literal, Optional
+from typing import Any, Literal
 
 import yaml
 
@@ -61,8 +61,10 @@ class SearchOptions:
     max_results: int = 10
     depth: int = 2
     boost_recent: bool = False
-    time_decay_factor: Optional[float] = None
-    weights: Optional[Dict[str, float]] = field(default_factory=lambda: {"keyword": 0.4, "semantic": 0.6})
+    time_decay_factor: float | None = None
+    weights: dict[str, float] | None = field(
+        default_factory=lambda: {"keyword": 0.4, "semantic": 0.6}
+    )
 
 
 class MemoryQuery:
@@ -89,9 +91,9 @@ class MemoryQuery:
     def __init__(self, kernel: "MemoryKernel"):
         """Initialize the query builder with a reference to the kernel."""
         self.kernel = kernel
-        self._query: Optional[str] = None
-        self._tags: Optional[list[str]] = None
-        self._memory_type: Optional[MemoryType] = None
+        self._query: str | None = None
+        self._tags: list[str] | None = None
+        self._memory_type: MemoryType | None = None
         self._min_salience: float = 0.0
         self._depth: int = 2
         self._top_k: int = 8
@@ -241,9 +243,9 @@ class MemoryKernel:
     def __init__(
         self,
         vault_path: str,
-        embedding_adapter: Optional[Any] = None,
-        llm_client: Optional[Any] = None,
-        llm_config: Optional[dict[str, Any]] = None,
+        embedding_adapter: Any | None = None,
+        llm_client: Any | None = None,
+        llm_config: dict[str, Any] | None = None,
         auto_extract: bool = False,
     ) -> None:
         """
@@ -286,8 +288,8 @@ class MemoryKernel:
         if auto_extract and llm_client:
             self.organizer = SmartAutoOrganizer(llm_client, llm_config)
             logger.info("Auto-extraction enabled with LLM client")
-        
-        logger.info(f"MemoGraph kernel initialized successfully")
+
+        logger.info("MemoGraph kernel initialized successfully")
 
     @classmethod
     def from_config(cls, config_path: str) -> "MemoryKernel":
@@ -331,18 +333,18 @@ class MemoryKernel:
         else:
             try:
                 import tomli as tomllib
-            except ImportError:
+            except ImportError as err:
                 raise ImportError(
                     "TOML support requires Python 3.11+ or 'tomli' package. "
                     "Install with: pip install tomli"
-                )
+                ) from err
 
         # Read config file
-        config_path = Path(config_path)
-        if not config_path.exists():
-            raise FileNotFoundError(f"Configuration file not found: {config_path}")
+        config_path_obj = Path(config_path)
+        if not config_path_obj.exists():
+            raise FileNotFoundError(f"Configuration file not found: {config_path_obj}")
 
-        with open(config_path, "rb") as f:
+        with open(config_path_obj, "rb") as f:
             config = tomllib.load(f)
 
         # Extract memograph section
@@ -351,15 +353,13 @@ class MemoryKernel:
         # Required parameter
         vault_path = memograph_config.get("vault_path")
         if not vault_path:
-            raise KeyError(
-                "Configuration must include 'vault_path' in [memograph] section"
-            )
+            raise KeyError("Configuration must include 'vault_path' in [memograph] section")
 
         # Optional parameters
         auto_extract = memograph_config.get("auto_extract", False)
-        
+
         logger.info(f"Loaded configuration from: {config_path}")
-        
+
         # Create and return kernel
         return cls(
             vault_path=vault_path,
@@ -435,7 +435,7 @@ class MemoryKernel:
         )
 
     @staticmethod
-    def _normalize_tags(tags: Optional[list[str]]) -> list[str]:
+    def _normalize_tags(tags: list[str] | None) -> list[str]:
         """Normalize tags by removing '#' prefix and trimming whitespace."""
         if not tags:
             return []
@@ -452,7 +452,7 @@ class MemoryKernel:
         slug = re.sub(r"[^a-zA-Z0-9]+", "-", text.strip().lower()).strip("-")
         return slug or datetime.now(timezone.utc).strftime("memory-%Y%m%d-%H%M%S")
 
-    def ingest(self, force: bool = False, auto_extract: Optional[bool] = None) -> dict[str, int]:
+    def ingest(self, force: bool = False, auto_extract: bool | None = None) -> dict[str, int]:
         """
         Ingest all markdown memories from the vault directory into the knowledge graph.
 
@@ -489,7 +489,7 @@ class MemoryKernel:
             >>> print(f"Extracted {stats['entities_extracted']} entities")
         """
         logger.info(f"Starting ingestion from vault: {self.vault_path}")
-        
+
         # Rebuild graph from scratch
         self.graph = VaultGraph()
         indexed, skipped = self.indexer.index(self.graph, force=force)
@@ -507,9 +507,9 @@ class MemoryKernel:
             logger.info(f"Extracted {entities_extracted} total entities")
 
         total = len(self.graph._nodes)
-        
+
         logger.info(f"Ingestion complete: {total} total memories in graph")
-        
+
         return {
             "indexed": indexed,
             "skipped": skipped,
@@ -527,6 +527,8 @@ class MemoryKernel:
         total_entities = 0
         for memory in self.graph.all_nodes():
             try:
+                if self.organizer is None:
+                    continue
                 result = self.organizer.extract(memory)
                 self.graph.add_extraction_result(result)
                 total_entities += result.entity_count()
@@ -583,7 +585,7 @@ class MemoryKernel:
             raise ValueError(f"Memory '{memory_id}' not found in graph")
 
         logger.info(f"Extracting entities from memory: {memory_id}")
-        
+
         result = self.organizer.extract(memory)
         self.graph.add_extraction_result(result)
 
@@ -601,9 +603,7 @@ class MemoryKernel:
         }
 
     def get_entities(
-        self,
-        memory_id: Optional[str] = None,
-        entity_type: Optional[Any] = None
+        self, memory_id: str | None = None, entity_type: Any | None = None
     ) -> list[Any]:
         """
         Get extracted entities, optionally filtered by memory or type.
@@ -654,9 +654,9 @@ class MemoryKernel:
         title: str,
         content: str,
         memory_type: MemoryType = MemoryType.FACT,
-        tags: Optional[list[str]] = None,
+        tags: list[str] | None = None,
         salience: float = 0.5,
-        meta: Optional[dict[str, Any]] = None,
+        meta: dict[str, Any] | None = None,
     ) -> str:
         """
         Create and store a new memory in the knowledge graph.
@@ -710,10 +710,8 @@ class MemoryKernel:
         """
         # Validate title
         if not title or not isinstance(title, str):
-            raise TypeError(
-                f"title must be a non-empty string, got {type(title).__name__}"
-            )
-        
+            raise TypeError(f"title must be a non-empty string, got {type(title).__name__}")
+
         if not title.strip():
             raise ValueError(
                 "title cannot be empty. Provide a non-empty string for the memory title."
@@ -721,25 +719,19 @@ class MemoryKernel:
 
         # Validate content
         if not content or not isinstance(content, str):
-            raise TypeError(
-                f"content must be a non-empty string, got {type(content).__name__}"
-            )
-        
+            raise TypeError(f"content must be a non-empty string, got {type(content).__name__}")
+
         if not content.strip():
             raise ValueError(
                 "content cannot be empty. Provide memory content (supports [[wikilinks]])."
             )
 
         # Validate salience
-        if not isinstance(salience, (int, float)):
-            raise TypeError(
-                f"salience must be a number, got {type(salience).__name__}"
-            )
-        
+        if not isinstance(salience, int | float):
+            raise TypeError(f"salience must be a number, got {type(salience).__name__}")
+
         if not 0.0 <= salience <= 1.0:
-            raise ValueError(
-                f"salience must be between 0.0 and 1.0, got {salience}"
-            )
+            raise ValueError(f"salience must be between 0.0 and 1.0, got {salience}")
 
         # Validate memory_type
         if not isinstance(memory_type, MemoryType):
@@ -749,7 +741,7 @@ class MemoryKernel:
 
         # Process tags
         normalized_tags = self._normalize_tags(tags)
-        
+
         # Generate slug and handle collisions
         slug = self._slugify(title)
         file_path = self.vault_path / f"{slug}.md"
@@ -769,10 +761,10 @@ class MemoryKernel:
             "created": created_at,
             "salience": salience,
         }
-        
+
         # Add meta to frontmatter if provided
         if meta:
-            payload["meta"] = meta
+            payload["meta"] = meta  # type: ignore[assignment]
 
         frontmatter = "---\n" + yaml.safe_dump(payload, sort_keys=False).strip() + "\n---\n\n"
 
@@ -783,10 +775,12 @@ class MemoryKernel:
 
         # Write file
         file_path.write_text(frontmatter + body + "\n", encoding="utf-8")
-        
+
         logger.info(f"Created memory: {title} -> {file_path.name}")
-        logger.debug(f"Memory details: type={memory_type.value}, salience={salience}, tags={normalized_tags}")
-        
+        logger.debug(
+            f"Memory details: type={memory_type.value}, salience={salience}, tags={normalized_tags}"
+        )
+
         return str(file_path)
 
     def remember_many(
@@ -844,8 +838,21 @@ class MemoryKernel:
         for idx, memory_data in enumerate(memories):
             try:
                 # Extract parameters from dictionary
-                title = memory_data.get("title")
-                content = memory_data.get("content")
+                title_raw = memory_data.get("title")
+                content_raw = memory_data.get("content")
+
+                # Validate and cast title and content to str
+                if not isinstance(title_raw, str) or not title_raw:
+                    raise ValueError(
+                        f"title must be a non-empty string, got {type(title_raw).__name__}"
+                    )
+                if not isinstance(content_raw, str) or not content_raw:
+                    raise ValueError(
+                        f"content must be a non-empty string, got {type(content_raw).__name__}"
+                    )
+
+                title: str = title_raw
+                content: str = content_raw
                 memory_type = memory_data.get("memory_type", MemoryType.FACT)
                 tags = memory_data.get("tags")
                 salience = memory_data.get("salience", 0.5)
@@ -879,8 +886,7 @@ class MemoryKernel:
                     break
 
         logger.info(
-            f"Batch creation complete: {len(successful_paths)} created, "
-            f"{len(errors)} failed"
+            f"Batch creation complete: {len(successful_paths)} created, " f"{len(errors)} failed"
         )
 
         return successful_paths, errors
@@ -945,7 +951,7 @@ class MemoryKernel:
 
                 # Read existing content
                 content = memory_path.read_text(encoding="utf-8")
-                
+
                 # Parse frontmatter and body
                 if content.startswith("---\n"):
                     parts = content.split("---\n", 2)
@@ -961,7 +967,7 @@ class MemoryKernel:
                 # Update frontmatter
                 if "salience" in update_data:
                     frontmatter["salience"] = update_data["salience"]
-                
+
                 if "meta" in update_data:
                     if "meta" not in frontmatter:
                         frontmatter["meta"] = {}
@@ -978,13 +984,13 @@ class MemoryKernel:
                     existing_tags = []
                     tag_pattern = r"#(\w+)"
                     existing_tags = re.findall(tag_pattern, body)
-                    
+
                     # Merge tags (deduplicate)
                     all_tags = list(set(existing_tags + new_tags))
-                    
+
                     # Remove old tag line
                     body = re.sub(r"\n\n#[\w\s#]+$", "", body).strip()
-                    
+
                     # Add new tag line
                     tags_line = " ".join(f"#{tag}" for tag in all_tags)
                     if tags_line:
@@ -994,7 +1000,9 @@ class MemoryKernel:
                 frontmatter["modified"] = datetime.now(timezone.utc).isoformat()
 
                 # Write back
-                new_frontmatter = "---\n" + yaml.safe_dump(frontmatter, sort_keys=False).strip() + "\n---\n\n"
+                new_frontmatter = (
+                    "---\n" + yaml.safe_dump(frontmatter, sort_keys=False).strip() + "\n---\n\n"
+                )
                 memory_path.write_text(new_frontmatter + body + "\n", encoding="utf-8")
 
                 successful_ids.append(memory_id)
@@ -1016,8 +1024,7 @@ class MemoryKernel:
                     break
 
         logger.info(
-            f"Batch update complete: {len(successful_ids)} updated, "
-            f"{len(errors)} failed"
+            f"Batch update complete: {len(successful_ids)} updated, " f"{len(errors)} failed"
         )
 
         return successful_ids, errors
@@ -1025,7 +1032,7 @@ class MemoryKernel:
     def context_window(
         self,
         query: str,
-        tags: Optional[list[str]] = None,
+        tags: list[str] | None = None,
         depth: int = 2,
         top_k: int = 8,
         token_limit: int = 2048,
@@ -1068,15 +1075,15 @@ class MemoryKernel:
         nodes = self.retrieve_nodes(query=query, tags=tags, depth=depth, top_k=top_k)
         compressor = TokenCompressor(token_limit=token_limit)
         compressed = compressor.compress(nodes)
-        
+
         logger.debug(f"Generated context window: {len(nodes)} nodes, ~{len(compressed)} chars")
-        
+
         return compressed
 
     def retrieve_nodes(
         self,
         query: str,
-        tags: Optional[list[str]] = None,
+        tags: list[str] | None = None,
         depth: int = 2,
         top_k: int = 8,
     ) -> list[MemoryNode]:
@@ -1128,7 +1135,7 @@ class MemoryKernel:
         # Validate query
         if not query or not isinstance(query, str):
             raise TypeError(f"query must be a non-empty string, got {type(query).__name__}")
-        
+
         if not query.strip():
             raise ValueError("query cannot be empty")
 
@@ -1166,7 +1173,7 @@ class MemoryKernel:
         )
 
         logger.info(f"Retrieved {len(results)} nodes for query: '{query}'")
-        
+
         return results
 
     def query(self) -> MemoryQuery:
@@ -1200,7 +1207,7 @@ class MemoryKernel:
     def search(
         self,
         query: str,
-        options: Optional[SearchOptions] = None,
+        options: SearchOptions | None = None,
     ) -> list[MemoryNode]:
         """
         Advanced search with configurable options.
@@ -1250,27 +1257,29 @@ class MemoryKernel:
         # Apply min_salience filter
         if options.min_salience > 0.0:
             results = [n for n in results if n.salience >= options.min_salience]
-            logger.debug(f"Filtered to {len(results)} nodes with salience >= {options.min_salience}")
+            logger.debug(
+                f"Filtered to {len(results)} nodes with salience >= {options.min_salience}"
+            )
 
         # Apply recency boost if requested
         if options.boost_recent and options.time_decay_factor:
             import time
+
             current_time = time.time()
-            
+
             for node in results:
                 # Calculate time difference in days
                 node_time = node.created_at.timestamp()
                 days_old = (current_time - node_time) / (24 * 3600)
-                
+
                 # Apply exponential decay: score * exp(-decay_factor * days)
                 import math
+
                 recency_factor = math.exp(-options.time_decay_factor * days_old)
-                
-                # Boost salience by recency (store original if needed)
-                if not hasattr(node, '_original_salience'):
-                    node._original_salience = node.salience
+
+                # Boost salience by recency
                 node.salience = node.salience * (0.5 + 0.5 * recency_factor)
-            
+
             # Re-sort by boosted salience
             results.sort(key=lambda n: n.salience, reverse=True)
             logger.debug(f"Applied recency boost with decay factor {options.time_decay_factor}")
@@ -1279,18 +1288,17 @@ class MemoryKernel:
         if options.include_backlinks:
             # Add nodes that link to our results
             backlink_ids = set()
-            for node in results[:options.max_results]:
+            for node in results[: options.max_results]:
                 backlink_ids.update(node.backlinks)
-            
+
             for backlink_id in backlink_ids:
-                if backlink_node := self.graph.get(backlink_id):
-                    if backlink_node not in results:
-                        results.append(backlink_node)
-            
+                if (backlink_node := self.graph.get(backlink_id)) and backlink_node not in results:
+                    results.append(backlink_node)
+
             logger.debug(f"Included {len(backlink_ids)} backlink nodes")
 
         # Limit to max_results
-        results = results[:options.max_results]
+        results = results[: options.max_results]
 
         logger.info(
             f"Search completed: {len(results)} results "
@@ -1302,7 +1310,7 @@ class MemoryKernel:
     async def search_async(
         self,
         query: str,
-        options: Optional[SearchOptions] = None,
+        options: SearchOptions | None = None,
     ) -> list[MemoryNode]:
         """
         Async version of search() for FastAPI and async frameworks.
@@ -1328,9 +1336,9 @@ class MemoryKernel:
         title: str,
         content: str,
         memory_type: MemoryType = MemoryType.FACT,
-        tags: Optional[list[str]] = None,
+        tags: list[str] | None = None,
         salience: float = 0.5,
-        meta: Optional[dict[str, Any]] = None,
+        meta: dict[str, Any] | None = None,
     ) -> str:
         """
         Async version of remember() for FastAPI and async frameworks.
@@ -1369,9 +1377,7 @@ class MemoryKernel:
         )
 
     async def ingest_async(
-        self,
-        force: bool = False,
-        auto_extract: Optional[bool] = None
+        self, force: bool = False, auto_extract: bool | None = None
     ) -> dict[str, int]:
         """
         Async version of ingest() for FastAPI and async frameworks.
@@ -1394,7 +1400,7 @@ class MemoryKernel:
     async def retrieve_nodes_async(
         self,
         query: str,
-        tags: Optional[list[str]] = None,
+        tags: list[str] | None = None,
         depth: int = 2,
         top_k: int = 8,
     ) -> list[MemoryNode]:
@@ -1426,7 +1432,7 @@ class MemoryKernel:
     async def context_window_async(
         self,
         query: str,
-        tags: Optional[list[str]] = None,
+        tags: list[str] | None = None,
         depth: int = 2,
         top_k: int = 8,
         token_limit: int = 2048,
