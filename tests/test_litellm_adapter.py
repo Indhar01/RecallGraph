@@ -12,12 +12,9 @@ import pytest
 from memograph.adapters.llm.litellm_adapter import LiteLLMClient, LiteLLMConfig, create_client
 
 # Check if litellm can be imported properly
-try:
-    import litellm
+import importlib.util
 
-    LITELLM_AVAILABLE = True
-except (ImportError, Exception):
-    LITELLM_AVAILABLE = False
+LITELLM_AVAILABLE = importlib.util.find_spec("litellm") is not None
 
 # Skip marker for tests that require litellm
 requires_litellm = pytest.mark.skipif(

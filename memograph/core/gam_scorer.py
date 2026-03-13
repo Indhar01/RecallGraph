@@ -20,6 +20,7 @@ from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from .access_tracker import AccessTracker
     from .graph import VaultGraph
     from .node import MemoryNode
 

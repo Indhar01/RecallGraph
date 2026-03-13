@@ -302,6 +302,9 @@ class MemoryKernel:
         self.use_gam = use_gam
         self.gam_config = gam_config
 
+        # Declare retriever type (GAMRetriever is a subclass of HybridRetriever)
+        self.retriever: HybridRetriever
+        
         if use_gam:
             self.retriever = GAMRetriever(
                 self.graph,

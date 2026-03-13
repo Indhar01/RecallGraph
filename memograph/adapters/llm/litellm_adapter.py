@@ -146,7 +146,10 @@ class LiteLLMClient:
             response = self._litellm.completion(**params)
 
             # Extract text from response
-            return response.choices[0].message.content.strip()
+            content = response.choices[0].message.content
+            if content is None:
+                raise RuntimeError(f"No content in response from model '{cfg.model}'")
+            return str(content).strip()
 
         except Exception as e:
             # Provide helpful error message
@@ -195,7 +198,10 @@ class LiteLLMClient:
                 params["api_base"] = cfg.api_base
 
             response = await self._litellm.acompletion(**params)
-            return response.choices[0].message.content.strip()
+            content = response.choices[0].message.content
+            if content is None:
+                raise RuntimeError(f"No content in response from model '{cfg.model}'")
+            return str(content).strip()
 
         except Exception as e:
             error_msg = f"Async LLM generation failed with model '{cfg.model}': {str(e)}"

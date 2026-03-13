@@ -85,21 +85,23 @@ class GAMRetriever(HybridRetriever):
 
         # Initialize GAM components if enabled
         if use_gam:
-            self.scorer = GAMScorer(self.gam_config)
-            self.access_tracker = access_tracker or AccessTracker()
+            self.scorer: GAMScorer | None = GAMScorer(self.gam_config)
+            self.access_tracker: AccessTracker | None = access_tracker or AccessTracker()
             logger.info("GAM retrieval enabled with config: %s", self.gam_config)
         else:
-            self.scorer = None
-            self.access_tracker = None
+            self.scorer: GAMScorer | None = None
+            self.access_tracker: AccessTracker | None = None
             logger.debug("GAM retrieval disabled (backward compatible mode)")
 
     def retrieve(
         self,
         query: str,
-        seed_ids: list[str],
+        seed_ids: list[str] | None = None,
         tags: list[str] | None = None,
+        memory_type = None,
         depth: int = 2,
         top_k: int = 8,
+        min_salience: float = 0.0,
     ) -> list["MemoryNode"]:
         """
         Retrieve relevant memory nodes.
@@ -111,17 +113,21 @@ class GAMRetriever(HybridRetriever):
             query: Search query string
             seed_ids: IDs of seed nodes (starting points)
             tags: Optional tag filter
+            memory_type: Optional memory type filter
             depth: Graph traversal depth
             top_k: Maximum results to return
+            min_salience: Minimum salience score filter
 
         Returns:
             List of memory nodes, ranked by relevance
         """
         if not self.use_gam:
             # Backward compatible: use parent implementation
-            return super().retrieve(query, seed_ids, tags, depth, top_k)
+            return super().retrieve(query, seed_ids, tags, memory_type, depth, top_k, min_salience)
 
-        # GAM-enhanced retrieval
+        # GAM-enhanced retrieval (seed_ids should not be None for GAM)
+        if seed_ids is None:
+            seed_ids = []
         return self._gam_retrieve(query, seed_ids, tags, depth, top_k)
 
     def _gam_retrieve(
@@ -146,7 +152,7 @@ class GAMRetriever(HybridRetriever):
         initial_top_k = max(top_k * 2, 20)
 
         # Get initial candidates using standard retrieval
-        candidates = super().retrieve(query, seed_ids, tags, depth, initial_top_k)
+        candidates = super().retrieve(query, seed_ids, tags, None, depth, initial_top_k, 0.0)
 
         if not candidates:
             logger.debug("No candidates found for query: %s", query)
@@ -210,7 +216,7 @@ class GAMRetriever(HybridRetriever):
 
         # Get candidates
         initial_top_k = max(top_k * 2, 20)
-        candidates = super().retrieve(query, seed_ids, tags, depth, initial_top_k)
+        candidates = super().retrieve(query, seed_ids, tags, None, depth, initial_top_k, 0.0)
 
         query_context = {"query": query, "seed_ids": seed_ids}
 
