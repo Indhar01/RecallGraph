@@ -170,7 +170,7 @@ class GAMRetriever(HybridRetriever):
         # Score all candidates with GAM
         if not self.scorer:
             raise RuntimeError("GAM scorer not initialized. This should not happen in GAM mode.")
-        
+
         scored_nodes = []
         for node in candidates:
             gam_score = self.scorer.compute_score(
@@ -230,7 +230,7 @@ class GAMRetriever(HybridRetriever):
         # Get detailed explanations for top candidates
         if not self.scorer:
             raise RuntimeError("GAM scorer not initialized. This should not happen in GAM mode.")
-        
+
         explanations = []
         for node in candidates[:top_k]:
             explanation = self.scorer.explain_score(
