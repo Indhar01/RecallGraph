@@ -83,14 +83,18 @@ class GAMRetriever(HybridRetriever):
         self.use_gam = use_gam
         self.gam_config = gam_config or GAMConfig()
 
+        # Declare attributes with type annotations
+        self.scorer: GAMScorer | None
+        self.access_tracker: AccessTracker | None
+
         # Initialize GAM components if enabled
         if use_gam:
-            self.scorer: GAMScorer | None = GAMScorer(self.gam_config)
-            self.access_tracker: AccessTracker | None = access_tracker or AccessTracker()
+            self.scorer = GAMScorer(self.gam_config)
+            self.access_tracker = access_tracker or AccessTracker()
             logger.info("GAM retrieval enabled with config: %s", self.gam_config)
         else:
-            self.scorer: GAMScorer | None = None
-            self.access_tracker: AccessTracker | None = None
+            self.scorer = None
+            self.access_tracker = None
             logger.debug("GAM retrieval disabled (backward compatible mode)")
 
     def retrieve(
@@ -164,6 +168,9 @@ class GAMRetriever(HybridRetriever):
         query_context = {"query": query, "seed_ids": seed_ids}
 
         # Score all candidates with GAM
+        if not self.scorer:
+            raise RuntimeError("GAM scorer not initialized. This should not happen in GAM mode.")
+        
         scored_nodes = []
         for node in candidates:
             gam_score = self.scorer.compute_score(
@@ -221,6 +228,9 @@ class GAMRetriever(HybridRetriever):
         query_context = {"query": query, "seed_ids": seed_ids}
 
         # Get detailed explanations for top candidates
+        if not self.scorer:
+            raise RuntimeError("GAM scorer not initialized. This should not happen in GAM mode.")
+        
         explanations = []
         for node in candidates[:top_k]:
             explanation = self.scorer.explain_score(
