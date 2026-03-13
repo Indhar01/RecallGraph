@@ -12,6 +12,8 @@ import yaml
 from .compressor import TokenCompressor
 from .enums import MemoryType
 from .extractor import SmartAutoOrganizer
+from .gam_retriever import GAMRetriever
+from .gam_scorer import GAMConfig
 from .graph import VaultGraph
 from .indexer import VaultIndexer
 from .node import MemoryNode
@@ -247,6 +249,8 @@ class MemoryKernel:
         llm_client: Any | None = None,
         llm_config: dict[str, Any] | None = None,
         auto_extract: bool = False,
+        use_gam: bool = False,
+        gam_config: GAMConfig | None = None,
     ) -> None:
         """
         Initialize the memory kernel.
@@ -259,15 +263,30 @@ class MemoryKernel:
             llm_config: Optional configuration dictionary for the LLM.
             auto_extract: Whether to automatically extract entities during ingestion.
                 Requires llm_client to be provided.
+            use_gam: Enable Graph Attention Memory (GAM) scoring for enhanced retrieval.
+                Default: False (backward compatible). When enabled, uses GAMRetriever
+                with attention-based scoring, co-access tracking, and temporal decay.
+            gam_config: Optional GAM configuration for custom scoring weights.
+                If None and use_gam=True, uses default GAM weights.
 
         Example:
+            >>> # Basic usage (backward compatible)
             >>> kernel = MemoryKernel(vault_path="./memories")
-            >>> # With embeddings
-            >>> from memograph.adapters.embeddings import SentenceTransformersAdapter
-            >>> adapter = SentenceTransformersAdapter()
+            >>>
+            >>> # With GAM enabled
+            >>> kernel = MemoryKernel(vault_path="./memories", use_gam=True)
+            >>>
+            >>> # With custom GAM configuration
+            >>> from memograph.core.gam_scorer import GAMConfig
+            >>> config = GAMConfig(
+            ...     relationship_weight=0.4,
+            ...     recency_weight=0.3,
+            ...     salience_weight=0.3
+            ... )
             >>> kernel = MemoryKernel(
             ...     vault_path="./memories",
-            ...     embedding_adapter=adapter
+            ...     use_gam=True,
+            ...     gam_config=config
             ... )
         """
         self.vault_path = Path(vault_path).expanduser()
@@ -278,7 +297,25 @@ class MemoryKernel:
         self.graph = VaultGraph()
         self.embedding_adapter = embedding_adapter
         self.indexer = VaultIndexer(self.vault_path, embedding_adapter=embedding_adapter)
-        self.retriever = HybridRetriever(self.graph, embedding_adapter=embedding_adapter)
+
+        # Initialize retriever based on GAM setting
+        self.use_gam = use_gam
+        self.gam_config = gam_config
+
+        # Declare retriever type (GAMRetriever is a subclass of HybridRetriever)
+        self.retriever: HybridRetriever
+
+        if use_gam:
+            self.retriever = GAMRetriever(
+                self.graph,
+                embedding_adapter=embedding_adapter,
+                use_gam=True,
+                gam_config=gam_config,
+            )
+            logger.info("GAM-enhanced retrieval enabled")
+        else:
+            self.retriever = HybridRetriever(self.graph, embedding_adapter=embedding_adapter)
+            logger.info("Standard hybrid retrieval enabled")
 
         # Auto-extraction setup
         self.auto_extract = auto_extract
@@ -493,7 +530,20 @@ class MemoryKernel:
         # Rebuild graph from scratch
         self.graph = VaultGraph()
         indexed, skipped = self.indexer.index(self.graph, force=force)
-        self.retriever = HybridRetriever(self.graph, embedding_adapter=self.retriever.embeddings)
+
+        # Recreate retriever with same configuration
+        if self.use_gam:
+            self.retriever = GAMRetriever(
+                self.graph,
+                embedding_adapter=self.retriever.embeddings,
+                use_gam=True,
+                gam_config=self.gam_config,
+                access_tracker=getattr(self.retriever, "access_tracker", None),  # Preserve tracker
+            )
+        else:
+            self.retriever = HybridRetriever(
+                self.graph, embedding_adapter=self.retriever.embeddings
+            )
 
         logger.info(f"Indexed {indexed} files, skipped {skipped} unchanged files")
 
@@ -1303,6 +1353,123 @@ class MemoryKernel:
         )
 
         return results
+
+    def explain_retrieval(
+        self,
+        query: str,
+        tags: list[str] | None = None,
+        depth: int = 2,
+        top_k: int = 8,
+    ) -> dict:
+        """
+        Explain the retrieval process with detailed score breakdowns.
+
+        Only available when GAM is enabled. Shows why memories were ranked
+        in a particular order with component score contributions.
+
+        Args:
+            query: Search query string
+            tags: Optional tag filter
+            depth: Graph traversal depth
+            top_k: Maximum results to explain
+
+        Returns:
+            Dict with retrieval explanation including:
+            - query info
+            - GAM configuration
+            - candidate count
+            - top results with detailed score breakdowns
+
+        Raises:
+            RuntimeError: If GAM is not enabled
+
+        Example:
+            >>> kernel = MemoryKernel(vault_path="./vault", use_gam=True)
+            >>> kernel.ingest()
+            >>> explanation = kernel.explain_retrieval("python tips", top_k=5)
+            >>>
+            >>> print(f"Query: {explanation['query']}")
+            >>> print(f"Found {explanation['candidates_found']} candidates")
+            >>>
+            >>> for result in explanation['results']:
+            ...     print(f"\nMemory: {result['node_title']}")
+            ...     print(f"Final Score: {result['final_score']:.3f}")
+            ...     comps = result['components']
+            ...     print(f"  Relationship: {comps['relationship']['contribution']:.3f}")
+            ...     print(f"  Co-access: {comps['co_access']['contribution']:.3f}")
+            ...     print(f"  Recency: {comps['recency']['contribution']:.3f}")
+            ...     print(f"  Salience: {comps['salience']['contribution']:.3f}")
+        """
+        if not self.use_gam:
+            raise RuntimeError(
+                "GAM is not enabled. Initialize kernel with use_gam=True to use this feature."
+            )
+
+        if not isinstance(self.retriever, GAMRetriever):
+            raise RuntimeError("Retriever is not a GAMRetriever instance")
+
+        normalized_tags = self._normalize_tags(tags)
+
+        # Auto-ingest if needed
+        if not self.graph._nodes:
+            logger.info("Graph is empty, running auto-ingest")
+            self.ingest()
+
+        # Get seed IDs
+        query_words = [w.lower() for w in re.findall(r"\w+", query) if len(w) > 2]
+        seed_ids = []
+        for node in self.graph._nodes.values():
+            haystack = f"{node.title} {node.content}".lower()
+            if any(word in haystack for word in query_words):
+                seed_ids.append(node.id)
+
+        # Get explanation from GAM retriever
+        explanation = self.retriever.explain_retrieval(
+            query, seed_ids, normalized_tags, depth, top_k
+        )
+
+        return explanation
+
+    def get_gam_statistics(self) -> dict:
+        """
+        Get GAM access tracking statistics.
+
+        Returns access patterns and co-access data collected during retrieval.
+        Only available when GAM is enabled.
+
+        Returns:
+            Dict with statistics:
+            - total_queries: Number of queries tracked
+            - nodes_tracked: Number of unique nodes accessed
+            - relationships_tracked: Number of co-access relationships
+            - history_size: Size of query history
+            - most_accessed_nodes: Top 10 most accessed memories
+
+        Raises:
+            RuntimeError: If GAM is not enabled
+
+        Example:
+            >>> kernel = MemoryKernel(vault_path="./vault", use_gam=True)
+            >>> kernel.ingest()
+            >>> # Perform some queries...
+            >>> kernel.retrieve_nodes("python tips")
+            >>> kernel.retrieve_nodes("machine learning")
+            >>>
+            >>> stats = kernel.get_gam_statistics()
+            >>> print(f"Tracked {stats['total_queries']} queries")
+            >>> print(f"Most accessed memories:")
+            >>> for node_id, count in stats['most_accessed_nodes']:
+            ...     print(f"  {node_id}: {count} accesses")
+        """
+        if not self.use_gam:
+            raise RuntimeError(
+                "GAM is not enabled. Initialize kernel with use_gam=True to use this feature."
+            )
+
+        if not isinstance(self.retriever, GAMRetriever):
+            raise RuntimeError("Retriever is not a GAMRetriever instance")
+
+        return self.retriever.get_access_statistics()
 
     async def search_async(
         self,
