@@ -190,7 +190,7 @@ class GAMRetriever(HybridRetriever):
 
         logger.info(
             f"GAM retrieval complete: {len(top_nodes)} nodes "
-            f"(scores: {scored_nodes[0][1]:.3f} to {scored_nodes[min(len(scored_nodes)-1, top_k-1)][1]:.3f})"
+            f"(scores: {scored_nodes[0][1]:.3f} to {scored_nodes[min(len(scored_nodes) - 1, top_k - 1)][1]:.3f})"
         )
 
         return top_nodes
