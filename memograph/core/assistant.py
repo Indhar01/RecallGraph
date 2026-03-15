@@ -81,7 +81,27 @@ def run_answer(
     max_tokens: int = 1024,
     temperature: float = 0.1,
     base_url: str | None = None,
+    timeout: int = 600,
+    stream: bool = True,
+    stream_callback = None,
 ) -> str:
+    """
+    Run answer generation with an LLM provider.
+    
+    Args:
+        provider: LLM provider ('claude' or 'ollama')
+        prompt: The prompt to send
+        model: Model name override
+        max_tokens: Maximum tokens to generate
+        temperature: Sampling temperature
+        base_url: Base URL override
+        timeout: Request timeout in seconds (ollama only)
+        stream: Enable streaming mode (ollama only)
+        stream_callback: Callback for streaming tokens (ollama only)
+    
+    Returns:
+        Complete response text
+    """
     if provider == "claude":
         from ..adapters.llm.claude import ClaudeLLMClient, ClaudeLLMConfig
 
@@ -102,8 +122,14 @@ def run_answer(
             model=model or "llama3.1:8b",
             max_tokens=max_tokens,
             temperature=temperature,
+            timeout=timeout,
+            stream=stream,
         )
-        return ollama_client.generate(prompt=prompt, config=ollama_config)
+        return ollama_client.generate(
+            prompt=prompt, 
+            config=ollama_config,
+            stream_callback=stream_callback
+        )
 
     raise ValueError(f"Unsupported provider: {provider}")
 

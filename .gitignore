@@ -38,11 +38,19 @@ env/
 *.swo
 *~
 .DS_Store
+
+# Personal development notes and fix documentation
 IMPROVEMENTS_SUMMARY.md
 archive_2026-03-02/
 feedback.md
 MIGRATION_TO_RECALLGRAPH.md
 CI_FIX_SUMMARY.md
+CHAT_FEATURES.md
+CHAT_IMPROVEMENTS.md
+TIMEOUT_FIX_SUMMARY.md
+test_chat_improvements.py
+
+docs/
 
 # Testing
 .pytest_cache/

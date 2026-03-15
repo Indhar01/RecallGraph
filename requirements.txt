@@ -5,6 +5,7 @@
 # Core requirements
 PyYAML>=6.0
 requests>=2.31.0
+mcp>=1.0.0
 
 # Optional LLM Provider Dependencies (install as needed)
 # For OpenAI: pip install -e .[openai]

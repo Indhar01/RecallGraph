@@ -1,0 +1,17 @@
+{
+  "mcpServers": {
+    "memograph": {
+      "command": "python",
+      "args": [
+        "-m",
+        "memograph.mcp.run_server",
+        "--vault",
+        "C:\\Users\\YOUR_USERNAME\\Documents\\my-vault"
+      ],
+      "env": {
+        "MEMOGRAPH_PROVIDER": "ollama",
+        "MEMOGRAPH_MODEL": "llama3.1:latest"
+      }
+    }
+  }
+}
