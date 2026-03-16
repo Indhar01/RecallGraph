@@ -6,7 +6,7 @@ to MCP-compatible AI clients like Claude Desktop, Cline, etc.
 
 Usage:
     python -m memograph.mcp.run_server --vault ~/my-vault
-    
+
     Or set environment variable:
     export MEMOGRAPH_VAULT=~/my-vault
     python -m memograph.mcp.run_server
@@ -18,11 +18,11 @@ import logging
 import os
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Optional
 
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
-from mcp.types import Tool, TextContent
+from mcp.types import TextContent, Tool
 
 from .server import MemoGraphMCPServer
 
@@ -38,13 +38,13 @@ logger = logging.getLogger(__name__)
 memograph_server: Optional[MemoGraphMCPServer] = None
 
 
-async def handle_list_tools() -> List[Tool]:
+async def handle_list_tools() -> list[Tool]:
     """List available tools."""
     if not memograph_server:
         return []
-    
+
     schemas = memograph_server.get_tools_schema()
-    
+
     # Convert our schema format to MCP Tool format
     tools = []
     for schema in schemas:
@@ -54,15 +54,15 @@ async def handle_list_tools() -> List[Tool]:
             inputSchema=schema["inputSchema"],
         )
         tools.append(tool)
-    
+
     return tools
 
 
-async def handle_call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
+async def handle_call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
     """Handle tool execution."""
     if not memograph_server:
         return [TextContent(type="text", text="Error: Server not initialized")]
-    
+
     try:
         # Route to appropriate handler
         if name == "search_vault":
@@ -84,15 +84,17 @@ async def handle_call_tool(name: str, arguments: Dict[str, Any]) -> List[TextCon
                 "success": False,
                 "error": f"Unknown tool: {name}",
             }
-        
+
         # Format result as text content
         import json
+
         result_text = json.dumps(result, indent=2)
         return [TextContent(type="text", text=result_text)]
-        
+
     except Exception as e:
         logger.error(f"Error executing tool {name}: {e}")
         import json
+
         error_result = {
             "success": False,
             "error": str(e),
@@ -103,35 +105,35 @@ async def handle_call_tool(name: str, arguments: Dict[str, Any]) -> List[TextCon
 async def run_server(vault_path: str, llm_provider: str, llm_model: Optional[str]):
     """Run the MCP server using the official SDK."""
     global memograph_server
-    
+
     # Initialize MemoGraph server
     memograph_server = MemoGraphMCPServer(
         vault_path=vault_path,
         llm_provider=llm_provider,
         llm_model=llm_model,
     )
-    
+
     logger.info(f"Initialized MemoGraph MCP server with vault: {vault_path}")
-    
+
     # Create MCP server
     server = Server("memograph")
-    
+
     # Register handlers
     @server.list_tools()
     async def list_tools_handler():
         return await handle_list_tools()
-    
+
     @server.call_tool()
     async def call_tool_handler(name: str, arguments: dict):
         return await handle_call_tool(name, arguments)
-    
+
     # Run stdio server
     async with stdio_server() as (read_stream, write_stream):
         logger.info("MemoGraph MCP Server started (stdio mode)")
         logger.info(f"Vault: {vault_path}")
         logger.info(f"Provider: {llm_provider}")
         logger.info("Ready for requests...")
-        
+
         await server.run(
             read_stream,
             write_stream,
@@ -166,25 +168,27 @@ def main():
         choices=["DEBUG", "INFO", "WARNING", "ERROR"],
         help="Logging level",
     )
-    
+
     args = parser.parse_args()
-    
+
     # Set log level
     logging.getLogger().setLevel(getattr(logging, args.log_level))
-    
+
     # Validate vault path
     vault_path = Path(args.vault).expanduser()
     if not vault_path.exists():
         logger.warning(f"Vault path does not exist, will be created: {vault_path}")
         vault_path.mkdir(parents=True, exist_ok=True)
-    
+
     # Run server
     try:
-        asyncio.run(run_server(
-            vault_path=str(vault_path),
-            llm_provider=args.provider,
-            llm_model=args.model,
-        ))
+        asyncio.run(
+            run_server(
+                vault_path=str(vault_path),
+                llm_provider=args.provider,
+                llm_model=args.model,
+            )
+        )
     except KeyboardInterrupt:
         logger.info("Server stopped by user")
     except Exception as e:

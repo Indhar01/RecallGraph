@@ -1,6 +1,5 @@
 import json
 import os
-import sys
 from dataclasses import dataclass, field
 from urllib import error, request
 
@@ -22,13 +21,13 @@ class OllamaLLMClient:
     def generate(self, prompt: str, config: OllamaLLMConfig, stream_callback=None) -> str:
         """
         Generate a response from Ollama.
-        
+
         Args:
             prompt: The prompt to send to the model
             config: Configuration for the LLM
             stream_callback: Optional callback function for streaming tokens.
                            Should accept a string token as parameter.
-        
+
         Returns:
             Complete response text
         """
@@ -47,7 +46,7 @@ class OllamaLLMClient:
             headers={"Content-Type": "application/json"},
             method="POST",
         )
-        
+
         try:
             if config.stream and stream_callback:
                 # Streaming mode: process tokens as they arrive
@@ -55,7 +54,7 @@ class OllamaLLMClient:
             else:
                 # Non-streaming mode: wait for complete response
                 return self._generate_non_stream(req, config.timeout)
-                
+
         except error.HTTPError as exc:
             detail = exc.read().decode("utf-8") if exc.fp else str(exc)
             raise RuntimeError(f"Ollama HTTP error ({exc.code}): {detail}") from exc
@@ -80,29 +79,29 @@ class OllamaLLMClient:
     def _generate_stream(self, req: request.Request, timeout: int, stream_callback) -> str:
         """Generate response with streaming token display."""
         full_response = []
-        
+
         with request.urlopen(req, timeout=timeout) as response:
             # Read the stream line by line
             for line in response:
                 if not line:
                     continue
-                    
+
                 try:
                     chunk = json.loads(line.decode("utf-8"))
                     token = chunk.get("response", "")
-                    
+
                     if token:
                         full_response.append(token)
                         # Call the callback with the token
                         if stream_callback:
                             stream_callback(token)
-                    
+
                     # Check if this is the final chunk
                     if chunk.get("done", False):
                         break
-                        
+
                 except json.JSONDecodeError:
                     # Skip invalid JSON lines
                     continue
-        
+
         return "".join(full_response).strip()

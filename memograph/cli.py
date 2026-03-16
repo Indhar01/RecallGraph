@@ -47,10 +47,17 @@ class Spinner:
             self.spinner_thread.join(timeout=0.5)
 
 
-def _generate_conversation_title(kernel: MemoryKernel, query: str, answer: str, provider: str, model: str | None, base_url: str | None) -> str:
+def _generate_conversation_title(
+    kernel: MemoryKernel,
+    query: str,
+    answer: str,
+    provider: str,
+    model: str | None,
+    base_url: str | None,
+) -> str:
     """
     Generate a concise title for the conversation using LLM.
-    
+
     Falls back to truncated query if LLM fails.
     """
     try:
@@ -60,7 +67,7 @@ def _generate_conversation_title(kernel: MemoryKernel, query: str, answer: str, 
             f"Question: {query}\n"
             f"Answer: {answer[:200]}..."
         )
-        
+
         # Use the same provider/model but with shorter response
         title = run_answer(
             provider=provider,
@@ -70,14 +77,14 @@ def _generate_conversation_title(kernel: MemoryKernel, query: str, answer: str, 
             temperature=0.3,
             base_url=base_url,
         )
-        
+
         # Clean up the title
         title = title.strip().strip('"').strip("'")
-        
+
         # Ensure it's not too long
         if len(title) > 80:
             title = title[:77] + "..."
-        
+
         return title
     except Exception:
         # Fallback to truncated query
@@ -94,10 +101,10 @@ def _run_ask(kernel: MemoryKernel, args) -> None:
 
     def ask_once(query_text: str) -> None:
         nonlocal conversation_started
-        
+
         if conversation_started is None:
             conversation_started = datetime.now()
-        
+
         context, sources = retrieve_cited_context(
             kernel=kernel,
             query=query_text,
@@ -107,26 +114,26 @@ def _run_ask(kernel: MemoryKernel, args) -> None:
             token_limit=args.token_limit,
         )
         prompt = build_answer_prompt(context=context, query=query_text)
-        
+
         try:
             # Determine if we should stream (only for Ollama)
             should_stream = args.provider == "ollama" and args.stream and not args.no_spinner
-            
+
             if should_stream:
                 # Streaming mode: show spinner for connection, then stream tokens
                 with Spinner("Connecting to Ollama"):
                     # Brief pause to show spinner
                     time.sleep(0.5)
-                
+
                 # Clear spinner and start streaming
                 sys.stdout.write("\r" + " " * 50 + "\r")
                 sys.stdout.flush()
-                
+
                 # Define callback to print tokens as they arrive
                 def print_token(token: str):
                     sys.stdout.write(token)
                     sys.stdout.flush()
-                
+
                 answer = run_answer(
                     provider=args.provider,
                     prompt=prompt,
@@ -139,7 +146,7 @@ def _run_ask(kernel: MemoryKernel, args) -> None:
                     stream_callback=print_token,
                 )
                 print()  # New line after streaming
-                
+
             elif not args.no_spinner:
                 # Non-streaming with spinner
                 with Spinner("Thinking"):
@@ -150,7 +157,7 @@ def _run_ask(kernel: MemoryKernel, args) -> None:
                         max_tokens=args.max_tokens,
                         temperature=args.temperature,
                         base_url=args.base_url,
-                        timeout=getattr(args, 'ollama_timeout', 600),
+                        timeout=getattr(args, "ollama_timeout", 600),
                         stream=False,
                     )
             else:
@@ -162,7 +169,7 @@ def _run_ask(kernel: MemoryKernel, args) -> None:
                     max_tokens=args.max_tokens,
                     temperature=args.temperature,
                     base_url=args.base_url,
-                    timeout=getattr(args, 'ollama_timeout', 600),
+                    timeout=getattr(args, "ollama_timeout", 600),
                     stream=False,
                 )
         except Exception as exc:
@@ -192,13 +199,15 @@ def _run_ask(kernel: MemoryKernel, args) -> None:
         # Save conversations if enabled
         if args.save_chat and args.chat:
             # Store in history for combined mode
-            conversation_history.append({
-                "question": query_text,
-                "answer": answer,
-                "sources": sources,
-                "timestamp": datetime.now()
-            })
-            
+            conversation_history.append(
+                {
+                    "question": query_text,
+                    "answer": answer,
+                    "sources": sources,
+                    "timestamp": datetime.now(),
+                }
+            )
+
             # Save based on mode
             if args.save_mode == "separate":
                 _save_conversation_separate(
@@ -210,7 +219,7 @@ def _run_ask(kernel: MemoryKernel, args) -> None:
                     provider=args.provider,
                     model=args.model,
                     base_url=args.base_url,
-                    auto_title=args.auto_title
+                    auto_title=args.auto_title,
                 )
             elif args.save_mode == "combined":
                 # Don't save yet, wait for chat end
@@ -226,7 +235,7 @@ def _run_ask(kernel: MemoryKernel, args) -> None:
                     provider=args.provider,
                     model=args.model,
                     base_url=args.base_url,
-                    auto_title=args.auto_title
+                    auto_title=args.auto_title,
                 )
 
     if args.chat:
@@ -237,9 +246,13 @@ def _run_ask(kernel: MemoryKernel, args) -> None:
                 continue
             if query_text.lower() in {"exit", "quit"}:
                 print("bye")
-                
+
                 # Save combined conversation if needed
-                if args.save_chat and conversation_history and args.save_mode in ["combined", "both"]:
+                if (
+                    args.save_chat
+                    and conversation_history
+                    and args.save_mode in ["combined", "both"]
+                ):
                     _save_conversation_combined(
                         kernel=kernel,
                         conversation_history=conversation_history,
@@ -247,7 +260,7 @@ def _run_ask(kernel: MemoryKernel, args) -> None:
                         provider=args.provider,
                         model=args.model,
                         base_url=args.base_url,
-                        auto_title=args.auto_title
+                        auto_title=args.auto_title,
                     )
                 break
             ask_once(query_text)
@@ -268,7 +281,7 @@ def _save_conversation_separate(
     provider: str,
     model: str | None,
     base_url: str | None,
-    auto_title: bool
+    auto_title: bool,
 ) -> None:
     """Save question and answer as separate memory entries."""
     try:
@@ -277,32 +290,32 @@ def _save_conversation_separate(
             title = _generate_conversation_title(kernel, query, answer, provider, model, base_url)
         else:
             title = query[:50] + ("..." if len(query) > 50 else "")
-        
+
         # Format sources for content
         sources_text = ""
         if sources:
             sources_text = "\n\n**Sources:**\n" + "\n".join(
                 f"- [{src.source_id}] {src.title}" for src in sources
             )
-        
+
         # Save question
         kernel.remember(
             title=f"Q: {title}",
             content=query,
             memory_type=MemoryType.EPISODIC,
             tags=["chat", "question"] + (tags or []),
-            salience=0.5
+            salience=0.5,
         )
-        
+
         # Save answer
         kernel.remember(
             title=f"A: {title}",
             content=f"{answer}{sources_text}",
             memory_type=MemoryType.EPISODIC,
             tags=["chat", "answer"] + (tags or []),
-            salience=0.6
+            salience=0.6,
         )
-        
+
     except Exception as e:
         print(f"\nWarning: Failed to save conversation: {e}")
 
@@ -314,39 +327,41 @@ def _save_conversation_combined(
     provider: str,
     model: str | None,
     base_url: str | None,
-    auto_title: bool
+    auto_title: bool,
 ) -> None:
     """Save entire conversation thread as a single memory entry."""
     try:
         if not conversation_history:
             return
-        
+
         # Generate title based on first exchange
         first_q = conversation_history[0]["question"]
         first_a = conversation_history[0]["answer"]
-        
+
         if auto_title:
-            title = _generate_conversation_title(kernel, first_q, first_a, provider, model, base_url)
+            title = _generate_conversation_title(
+                kernel, first_q, first_a, provider, model, base_url
+            )
         else:
             title = first_q[:50] + ("..." if len(first_q) > 50 else "")
-        
+
         # Build conversation content
         content_parts = []
         for idx, exchange in enumerate(conversation_history, 1):
             content_parts.append(f"**Turn {idx}**")
             content_parts.append(f"You: {exchange['question']}")
             content_parts.append(f"Assistant: {exchange['answer']}")
-            
-            if exchange['sources']:
+
+            if exchange["sources"]:
                 sources_text = "Sources: " + ", ".join(
-                    f"[{src.source_id}] {src.title}" for src in exchange['sources']
+                    f"[{src.source_id}] {src.title}" for src in exchange["sources"]
                 )
                 content_parts.append(sources_text)
-            
+
             content_parts.append("")  # Empty line between exchanges
-        
+
         conversation_content = "\n".join(content_parts)
-        
+
         # Save combined conversation
         kernel.remember(
             title=f"Chat: {title}",
@@ -357,12 +372,12 @@ def _save_conversation_combined(
             meta={
                 "exchange_count": len(conversation_history),
                 "started": conversation_history[0]["timestamp"].isoformat(),
-                "ended": conversation_history[-1]["timestamp"].isoformat()
-            }
+                "ended": conversation_history[-1]["timestamp"].isoformat(),
+            },
         )
-        
+
         print(f"\n✓ Saved conversation with {len(conversation_history)} exchanges to vault")
-        
+
     except Exception as e:
         print(f"\nWarning: Failed to save combined conversation: {e}")
 
@@ -443,20 +458,57 @@ def main():
     ask_parser.add_argument("--temperature", type=float, default=0.1, help="Sampling temperature")
     ask_parser.add_argument("--show-context", action="store_true", help="Print context sent to LLM")
     ask_parser.add_argument("--no-citations", action="store_true", help="Hide source list output")
-    ask_parser.add_argument("--save-chat", action="store_true", default=True, help="Save chat conversations to vault (default: True)")
-    ask_parser.add_argument("--no-save-chat", dest="save_chat", action="store_false", help="Disable saving chat conversations")
+    ask_parser.add_argument(
+        "--save-chat",
+        action="store_true",
+        default=True,
+        help="Save chat conversations to vault (default: True)",
+    )
+    ask_parser.add_argument(
+        "--no-save-chat",
+        dest="save_chat",
+        action="store_false",
+        help="Disable saving chat conversations",
+    )
     ask_parser.add_argument(
         "--save-mode",
         choices=["separate", "combined", "both"],
         default="both",
-        help="How to save conversations: 'separate' (Q&A pairs), 'combined' (full thread), 'both' (default: both)"
+        help="How to save conversations: 'separate' (Q&A pairs), 'combined' (full thread), 'both' (default: both)",
     )
-    ask_parser.add_argument("--auto-title", action="store_true", default=True, help="Auto-generate conversation titles using LLM (default: True)")
-    ask_parser.add_argument("--no-auto-title", dest="auto_title", action="store_false", help="Disable automatic title generation")
-    ask_parser.add_argument("--no-spinner", action="store_true", help="Disable spinner animation during LLM requests")
-    ask_parser.add_argument("--ollama-timeout", type=int, default=600, help="Ollama request timeout in seconds (default: 600, env: OLLAMA_TIMEOUT)")
-    ask_parser.add_argument("--stream", action="store_true", default=True, help="Enable token streaming for Ollama (default: True)")
-    ask_parser.add_argument("--no-stream", dest="stream", action="store_false", help="Disable token streaming, wait for complete response")
+    ask_parser.add_argument(
+        "--auto-title",
+        action="store_true",
+        default=True,
+        help="Auto-generate conversation titles using LLM (default: True)",
+    )
+    ask_parser.add_argument(
+        "--no-auto-title",
+        dest="auto_title",
+        action="store_false",
+        help="Disable automatic title generation",
+    )
+    ask_parser.add_argument(
+        "--no-spinner", action="store_true", help="Disable spinner animation during LLM requests"
+    )
+    ask_parser.add_argument(
+        "--ollama-timeout",
+        type=int,
+        default=600,
+        help="Ollama request timeout in seconds (default: 600, env: OLLAMA_TIMEOUT)",
+    )
+    ask_parser.add_argument(
+        "--stream",
+        action="store_true",
+        default=True,
+        help="Enable token streaming for Ollama (default: True)",
+    )
+    ask_parser.add_argument(
+        "--no-stream",
+        dest="stream",
+        action="store_false",
+        help="Disable token streaming, wait for complete response",
+    )
 
     import_parser = subparsers.add_parser(
         "import", help="Import documents (TXT, PDF, DOCX) and convert to markdown"
@@ -506,13 +558,9 @@ def main():
     )
     doctor_parser.add_argument("--ollama-url", default=None, help="Override Ollama base URL")
 
-    setup_mcp_parser = subparsers.add_parser(
-        "setup-mcp", help="Interactive MCP setup wizard"
-    )
+    setup_mcp_parser = subparsers.add_parser("setup-mcp", help="Interactive MCP setup wizard")
     setup_mcp_parser.add_argument(
-        "--vault-path",
-        default=None,
-        help="Default vault path for setup (optional)"
+        "--vault-path", default=None, help="Default vault path for setup (optional)"
     )
 
     verify_mcp_parser = subparsers.add_parser(
@@ -566,12 +614,13 @@ def main():
                     files = list(source_path.rglob("*"))
                 else:
                     files = list(source_path.glob("*"))
-                
+
                 supported = [
-                    f for f in files 
+                    f
+                    for f in files
                     if f.is_file() and f.suffix.lower() in [".txt", ".pdf", ".docx", ".doc"]
                 ]
-                
+
                 print(f"\nFound {len(supported)} files to import:")
                 for f in supported:
                     print(f"  - {f.name}")
@@ -611,22 +660,22 @@ def main():
 
             # Print summary
             print(f"\n{'='*50}")
-            print(f"Import Summary:")
+            print("Import Summary:")
             print(f"  ✓ Success: {results['success']}")
             print(f"  ⊘ Skipped: {results['skipped']}")
             print(f"  ✗ Failed: {results['failed']}")
-            
-            if results['errors']:
-                print(f"\nErrors:")
-                for error in results['errors']:
+
+            if results["errors"]:
+                print("\nErrors:")
+                for error in results["errors"]:
                     print(f"  - {error}")
-        
+
         else:
             print(f"Error: {source_path} not found")
             return
 
         # Auto-ingest if requested
-        if args.auto_ingest and (results['success'] if source_path.is_dir() else success):
+        if args.auto_ingest and (results["success"] if source_path.is_dir() else success):
             print(f"\n{'='*50}")
             print("Running ingest...")
             stats = kernel.ingest()
@@ -634,8 +683,8 @@ def main():
             print(f"  Total memories in vault: {stats['total']}")
         else:
             print(f"\n{'='*50}")
-            print("Remember to run: memograph --vault {0} ingest".format(args.vault))
-        
+            print(f"Remember to run: memograph --vault {args.vault} ingest")
+
         return
 
     if args.command == "doctor":
@@ -644,14 +693,14 @@ def main():
 
     if args.command == "setup-mcp":
         from .mcp_setup import MCPSetup
-        
+
         setup = MCPSetup(vault_path=args.vault_path or args.vault)
         setup.interactive_setup()
         return
 
     if args.command == "verify-mcp":
         from .mcp_setup import MCPSetup
-        
+
         setup = MCPSetup(vault_path=args.vault)
         results = setup.verify_setup()
         setup.print_verification_results(results)

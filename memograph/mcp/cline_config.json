@@ -3,14 +3,11 @@
     "servers": {
       "memograph": {
         "command": "python",
-        "args": [
-          "-m",
-          "memograph.mcp.run_server"
-        ],
+        "args": ["-m", "memograph.mcp.run_server"],
         "env": {
           "MEMOGRAPH_VAULT": "C:\\Users\\YOUR_USERNAME\\Documents\\my-vault"
         },
-        "comment": "LLM provider is optional. If not specified, query_with_context returns context for Cline's LLM to use. To enable answer generation in MemoGraph, add: MEMOGRAPH_PROVIDER=ollama and MEMOGRAPH_MODEL=llama3.1:latest"
+        "comment": "MemoGraph MCP Server - 10 tools available: search_vault, create_memory, query_with_context, get_vault_stats, list_memories, get_memory, import_document, delete_memory, update_memory, list_available_tools. LLM provider is optional - if not set, context is returned for Cline to use. To enable answer generation in MemoGraph, add: MEMOGRAPH_PROVIDER=ollama and MEMOGRAPH_MODEL=llama3.1:latest. See CONFIG_REFERENCE.md for details."
       }
     }
   }

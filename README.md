@@ -84,6 +84,74 @@ context = kernel.context_window(
 print(context)
 ```
 
+## 🔌 MCP Server (Model Context Protocol)
+
+MemoGraph includes a full-featured MCP server for seamless integration with AI assistants like **Cline** and **Claude Desktop**.
+
+### 10 Available Tools
+
+| Category | Tools | Description |
+|----------|-------|-------------|
+| **Search** | `search_vault`, `query_with_context` | Semantic search and context retrieval |
+| **Create** | `create_memory`, `import_document` | Add memories and import documents |
+| **Read** | `list_memories`, `get_memory` | Browse and retrieve memories |
+| **Update** | `update_memory` ⭐ | Modify existing memories |
+| **Delete** | `delete_memory` ⭐ | Remove memories by ID |
+| **Analytics** | `get_vault_stats` | Vault statistics and insights |
+| **Discovery** | `list_available_tools` ⭐ | List all available tools |
+
+⭐ = Recently added
+
+### Quick Setup for Cline
+
+Add to your `~/.cline/mcp_settings.json`:
+
+```json
+{
+  "mcp": {
+    "servers": {
+      "memograph": {
+        "command": "python",
+        "args": ["-m", "memograph.mcp.run_server"],
+        "env": {
+          "MEMOGRAPH_VAULT": "/path/to/your/vault"
+        }
+      }
+    }
+  }
+}
+```
+
+### Quick Setup for Claude Desktop
+
+Add to your `claude_desktop_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "memograph": {
+      "command": "python",
+      "args": ["-m", "memograph.mcp.run_server", "--vault", "/path/to/your/vault"]
+    }
+  }
+}
+```
+
+### Usage Examples
+
+Once configured, use natural language with your AI assistant:
+
+```
+"Search my vault for memories about Python"
+"Create a memory titled 'Project Ideas' with content '...'"
+"Update memory abc-123 to have salience 0.9"
+"Delete memory xyz-456"
+"What tools are available?"
+"Get vault statistics"
+```
+
+See **[CONFIG_REFERENCE.md](memograph/mcp/CONFIG_REFERENCE.md)** for complete MCP configuration guide.
+
 ## 🎯 CLI Usage
 
 MemoGraph comes with a powerful CLI for managing your vault and chatting with it.

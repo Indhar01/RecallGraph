@@ -1,10 +1,8 @@
 """Document importer for converting TXT, PDF, and Word files to Markdown."""
 
 import subprocess
-import sys
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
 
 import yaml
 
@@ -76,9 +74,7 @@ class DocumentImporter:
                 return False, "Failed to extract content from file"
 
             # Generate frontmatter
-            frontmatter = self._generate_frontmatter(
-                source_file, memory_type, salience, tags
-            )
+            frontmatter = self._generate_frontmatter(source_file, memory_type, salience, tags)
 
             # Write markdown file
             markdown_content = f"{frontmatter}\n{content}\n"
@@ -130,7 +126,9 @@ class DocumentImporter:
 
         # Filter to supported formats
         supported_files = [
-            f for f in files if f.is_file() and f.suffix.lower() in [".txt", ".pdf", ".docx", ".doc"]
+            f
+            for f in files
+            if f.is_file() and f.suffix.lower() in [".txt", ".pdf", ".docx", ".doc"]
         ]
 
         if not supported_files:
@@ -145,9 +143,7 @@ class DocumentImporter:
         results = {"success": 0, "failed": 0, "skipped": 0, "errors": []}
 
         for file in supported_files:
-            success, message = self.import_file(
-                str(file), memory_type, salience, tags, overwrite
-            )
+            success, message = self.import_file(str(file), memory_type, salience, tags, overwrite)
 
             if success:
                 results["success"] += 1

@@ -83,11 +83,11 @@ def run_answer(
     base_url: str | None = None,
     timeout: int = 600,
     stream: bool = True,
-    stream_callback = None,
+    stream_callback=None,
 ) -> str:
     """
     Run answer generation with an LLM provider.
-    
+
     Args:
         provider: LLM provider ('claude' or 'ollama')
         prompt: The prompt to send
@@ -98,7 +98,7 @@ def run_answer(
         timeout: Request timeout in seconds (ollama only)
         stream: Enable streaming mode (ollama only)
         stream_callback: Callback for streaming tokens (ollama only)
-    
+
     Returns:
         Complete response text
     """
@@ -126,9 +126,7 @@ def run_answer(
             stream=stream,
         )
         return ollama_client.generate(
-            prompt=prompt, 
-            config=ollama_config,
-            stream_callback=stream_callback
+            prompt=prompt, config=ollama_config, stream_callback=stream_callback
         )
 
     raise ValueError(f"Unsupported provider: {provider}")
