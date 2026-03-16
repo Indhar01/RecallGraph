@@ -18,7 +18,7 @@ import logging
 import os
 import sys
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
@@ -35,7 +35,7 @@ logger = logging.getLogger(__name__)
 
 
 # Global MemoGraph server instance
-memograph_server: Optional[MemoGraphMCPServer] = None
+memograph_server: MemoGraphMCPServer | None = None
 
 
 async def handle_list_tools() -> list[Tool]:
@@ -102,7 +102,7 @@ async def handle_call_tool(name: str, arguments: dict[str, Any]) -> list[TextCon
         return [TextContent(type="text", text=json.dumps(error_result, indent=2))]
 
 
-async def run_server(vault_path: str, llm_provider: str, llm_model: Optional[str]):
+async def run_server(vault_path: str, llm_provider: str, llm_model: str | None):
     """Run the MCP server using the official SDK."""
     global memograph_server
 

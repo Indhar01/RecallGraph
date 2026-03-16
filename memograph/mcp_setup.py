@@ -10,7 +10,7 @@ import platform
 import subprocess
 import sys
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 
 class MCPClient:
@@ -29,7 +29,7 @@ class MCPClient:
 class MCPSetup:
     """Automated MCP setup wizard."""
 
-    def __init__(self, vault_path: Optional[str] = None):
+    def __init__(self, vault_path: str | None = None):
         self.vault_path = vault_path
         self.system = platform.system()
         self.clients: list[MCPClient] = []
@@ -68,7 +68,7 @@ class MCPSetup:
         self.clients = clients
         return clients
 
-    def _get_claude_config_path(self) -> Optional[Path]:
+    def _get_claude_config_path(self) -> Path | None:
         """Get Claude Desktop config path based on OS."""
         if self.system == "Darwin":  # macOS
             return Path.home() / "Library/Application Support/Claude/claude_desktop_config.json"
@@ -80,7 +80,7 @@ class MCPSetup:
             return Path.home() / ".config/Claude/claude_desktop_config.json"
         return None
 
-    def _get_cline_config_path(self) -> Optional[Path]:
+    def _get_cline_config_path(self) -> Path | None:
         """Get Cline CLI config path."""
         # Try common locations
         paths = [
@@ -95,7 +95,7 @@ class MCPSetup:
 
         return paths[0]  # Default to first path
 
-    def _get_vscode_cline_config_path(self) -> Optional[Path]:
+    def _get_vscode_cline_config_path(self) -> Path | None:
         """Get VS Code Cline extension config path."""
         if self.system == "Darwin":
             base = Path.home() / "Library/Application Support/Code/User"

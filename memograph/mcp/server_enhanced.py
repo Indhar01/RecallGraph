@@ -7,7 +7,7 @@ These tools provide advanced CRUD, analytics, and maintenance capabilities.
 import logging
 from datetime import datetime, timezone
 from difflib import SequenceMatcher
-from typing import Any, Optional
+from typing import Any
 
 import yaml
 
@@ -127,10 +127,10 @@ class EnhancedMCPTools:
     async def update_memory(
         self,
         memory_id: str,
-        title: Optional[str] = None,
-        content: Optional[str] = None,
-        tags: Optional[list[str]] = None,
-        salience: Optional[float] = None,
+        title: str | None = None,
+        content: str | None = None,
+        tags: list[str] | None = None,
+        salience: float | None = None,
         append_content: bool = False,
     ) -> dict[str, Any]:
         """Update an existing memory.
@@ -261,9 +261,9 @@ class EnhancedMCPTools:
 
     async def bulk_delete_memories(
         self,
-        memory_ids: Optional[list[str]] = None,
-        tags: Optional[list[str]] = None,
-        memory_type: Optional[str] = None,
+        memory_ids: list[str] | None = None,
+        tags: list[str] | None = None,
+        memory_type: str | None = None,
     ) -> dict[str, Any]:
         """Delete multiple memories by filter.
 

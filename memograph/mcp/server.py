@@ -7,7 +7,7 @@ AI client (Claude Desktop, Cline, etc.).
 
 import logging
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 from ..core.enums import MemoryType
 from ..core.kernel import MemoryKernel
@@ -31,8 +31,8 @@ class MemoGraphMCPServer:
     def __init__(
         self,
         vault_path: str,
-        llm_provider: Optional[str] = None,
-        llm_model: Optional[str] = None,
+        llm_provider: str | None = None,
+        llm_model: str | None = None,
     ):
         """Initialize MCP server with MemoGraph kernel.
 
@@ -60,10 +60,10 @@ class MemoGraphMCPServer:
     async def search_vault(
         self,
         query: str,
-        tags: Optional[list[str]] = None,
+        tags: list[str] | None = None,
         top_k: int = 8,
         depth: int = 2,
-        memory_type: Optional[str] = None,
+        memory_type: str | None = None,
     ) -> dict[str, Any]:
         """Search memories in the vault.
 
@@ -129,7 +129,7 @@ class MemoGraphMCPServer:
         title: str,
         content: str,
         memory_type: str = "semantic",
-        tags: Optional[list[str]] = None,
+        tags: list[str] | None = None,
         salience: float = 0.7,
     ) -> dict[str, Any]:
         """Create a new memory in the vault.
@@ -171,10 +171,10 @@ class MemoGraphMCPServer:
     async def query_with_context(
         self,
         question: str,
-        tags: Optional[list[str]] = None,
+        tags: list[str] | None = None,
         top_k: int = 8,
-        provider: Optional[str] = None,
-        model: Optional[str] = None,
+        provider: str | None = None,
+        model: str | None = None,
         generate_answer: bool = True,
     ) -> dict[str, Any]:
         """Ask a question with vault context.
@@ -299,8 +299,8 @@ class MemoGraphMCPServer:
     async def list_memories(
         self,
         limit: int = 20,
-        memory_type: Optional[str] = None,
-        tags: Optional[list[str]] = None,
+        memory_type: str | None = None,
+        tags: list[str] | None = None,
         sort_by: str = "created",
     ) -> dict[str, Any]:
         """List memories with optional filters.
@@ -414,7 +414,7 @@ class MemoGraphMCPServer:
     async def import_document(
         self,
         file_path: str,
-        tags: Optional[list[str]] = None,
+        tags: list[str] | None = None,
         memory_type: str = "episodic",
         salience: float = 0.7,
     ) -> dict[str, Any]:
@@ -506,10 +506,10 @@ class MemoGraphMCPServer:
     async def update_memory(
         self,
         memory_id: str,
-        title: Optional[str] = None,
-        content: Optional[str] = None,
-        tags: Optional[list[str]] = None,
-        salience: Optional[float] = None,
+        title: str | None = None,
+        content: str | None = None,
+        tags: list[str] | None = None,
+        salience: float | None = None,
         append_content: bool = False,
     ) -> dict[str, Any]:
         """Update an existing memory.
