@@ -286,7 +286,7 @@ class MemoGraphMCPServer:
                 "skipped": stats["skipped"],
                 "by_type": type_counts,
                 "total_tags": len(all_tags),
-                "tags": sorted(list(all_tags)),
+                "tags": sorted(all_tags),
             }
 
         except Exception as e:
@@ -572,10 +572,7 @@ class MemoGraphMCPServer:
             if content:
                 # Remove old tags from body first
                 body = re.sub(r"\n\n#[\w\s#]+$", "", body).strip()
-                if append_content:
-                    body = f"{body}\n\n{content}"
-                else:
-                    body = content
+                body = f"{body}\n\n{content}" if append_content else content
 
             # Update tags
             if tags:

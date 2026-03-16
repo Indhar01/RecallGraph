@@ -119,10 +119,7 @@ class DocumentImporter:
             }
 
         # Find all supported files
-        if recursive:
-            files = list(source_folder.rglob("*"))
-        else:
-            files = list(source_folder.glob("*"))
+        files = list(source_folder.rglob("*")) if recursive else list(source_folder.glob("*"))
 
         # Filter to supported formats
         supported_files = [
@@ -221,7 +218,7 @@ class DocumentImporter:
             )
             return result.stdout.strip()
 
-        except FileNotFoundError:
+        except FileNotFoundError as e:
             raise RuntimeError(
                 "Pandoc not found. Install it for PDF/Word support:\n"
                 "  Windows: choco install pandoc\n"
@@ -229,11 +226,11 @@ class DocumentImporter:
                 "  Linux: sudo apt install pandoc\n"
                 "Or install Python libraries:\n"
                 "  pip install pypdf python-docx"
-            )
+            ) from e
         except subprocess.CalledProcessError as e:
-            raise RuntimeError(f"Pandoc conversion failed: {e.stderr}")
-        except subprocess.TimeoutExpired:
-            raise RuntimeError("Pandoc conversion timed out (>60s)")
+            raise RuntimeError(f"Pandoc conversion failed: {e.stderr}") from e
+        except subprocess.TimeoutExpired as e:
+            raise RuntimeError("Pandoc conversion timed out (>60s)") from e
 
     def _generate_frontmatter(
         self,

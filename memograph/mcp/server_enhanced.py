@@ -420,4 +420,49 @@ class EnhancedMCPTools:
                     outgoing.append({
                         "id": link_node.id,
                         "title": link_node.title,
-                        "memory_type
+                        "memory_type": link_node.memory_type.value,
+                        "tags": link_node.tags,
+                    })
+
+            incoming = []
+            for link_id in node.backlinks:
+                link_node = self.kernel.graph.get(link_id)
+                if link_node:
+                    incoming.append({
+                        "id": link_node.id,
+                        "title": link_node.title,
+                        "memory_type": link_node.memory_type.value,
+                        "tags": link_node.tags,
+                    })
+
+            return {
+                "success": True,
+                "memory_id": memory_id,
+                "title": node.title,
+                "outgoing_connections": len(outgoing),
+                "incoming_connections": len(incoming),
+                "outgoing": outgoing,
+                "incoming": incoming,
+            }
+
+        except Exception as e:
+            logger.error(f"Error getting memory connections: {e}")
+            return {
+                "success": False,
+                "error": str(e),
+            }
+
+    def _fuzzy_match(self, target: str, candidates: list[str], n: int = 3) -> list[str]:
+        """Find fuzzy matches for a target string.
+
+        Args:
+            target: String to match
+            candidates: List of candidate strings
+            n: Number of matches to return
+
+        Returns:
+            List of best matching candidates
+        """
+        scores = [(c, SequenceMatcher(None, target.lower(), c.lower()).ratio()) for c in candidates]
+        scores.sort(key=lambda x: x[1], reverse=True)
+        return [c for c, score in scores[:n] if score > 0.5]

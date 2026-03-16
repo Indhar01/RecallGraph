@@ -48,7 +48,6 @@ class Spinner:
 
 
 def _generate_conversation_title(
-    kernel: MemoryKernel,
     query: str,
     answer: str,
     provider: str,
@@ -287,7 +286,7 @@ def _save_conversation_separate(
     try:
         # Generate title if auto_title enabled
         if auto_title:
-            title = _generate_conversation_title(kernel, query, answer, provider, model, base_url)
+            title = _generate_conversation_title(query, answer, provider, model, base_url)
         else:
             title = query[:50] + ("..." if len(query) > 50 else "")
 
@@ -340,7 +339,7 @@ def _save_conversation_combined(
 
         if auto_title:
             title = _generate_conversation_title(
-                kernel, first_q, first_a, provider, model, base_url
+                first_q, first_a, provider, model, base_url
             )
         else:
             title = first_q[:50] + ("..." if len(first_q) > 50 else "")
@@ -563,7 +562,7 @@ def main():
         "--vault-path", default=None, help="Default vault path for setup (optional)"
     )
 
-    verify_mcp_parser = subparsers.add_parser(
+    subparsers.add_parser(
         "verify-mcp", help="Verify MCP setup and configuration"
     )
 
