@@ -6,11 +6,13 @@ AI client (Claude Desktop, Cline, etc.).
 """
 
 import logging
+import os
 from pathlib import Path
 from typing import Any
 
 from ..core.enums import MemoryType
 from ..core.kernel import MemoryKernel
+from .autonomous_hooks import AutonomousHooks
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -47,6 +49,16 @@ class MemoGraphMCPServer:
         self.kernel = MemoryKernel(str(self.vault_path))
         self.llm_provider = llm_provider
         self.llm_model = llm_model
+        
+        # Initialize autonomous hooks (can be enabled/disabled via configuration)
+        self.autonomous_hooks = AutonomousHooks(self)
+        
+        # Check if autonomous mode is enabled via environment variable
+        auto_mode = os.environ.get("MEMOGRAPH_AUTONOMOUS_MODE", "false").lower() == "true"
+        if auto_mode:
+            self.autonomous_hooks.auto_search_enabled = True
+            self.autonomous_hooks.auto_save_responses = True
+            logger.info("Autonomous mode enabled via MEMOGRAPH_AUTONOMOUS_MODE")
 
         if llm_provider:
             logger.info(
@@ -56,6 +68,84 @@ class MemoGraphMCPServer:
             logger.info(
                 f"Initialized MemoGraph MCP server with vault: {self.vault_path} (no LLM provider - client will handle answers)"
             )
+
+    def _add_vault_context(self, response: dict[str, Any]) -> dict[str, Any]:
+        """Add vault context information to any response.
+
+        This helper ensures that AI assistants always know which vault is being used,
+        reducing confusion and unnecessary clarification questions.
+
+        Args:
+            response: Original response dictionary
+
+        Returns:
+            Response with vault_context added
+        """
+        response["vault_context"] = {
+            "path": str(self.vault_path),
+            "name": self.vault_path.name,
+        }
+        return response
+
+    def get_server_info(self) -> dict[str, Any]:
+        """Get server configuration and metadata.
+
+        This provides comprehensive information about the MCP server instance,
+        including vault configuration and capabilities.
+
+        Returns:
+            Dictionary with server metadata
+        """
+        return {
+            "name": "MemoGraph MCP Server",
+            "version": "1.0.0",
+            "vault": {
+                "path": str(self.vault_path),
+                "name": self.vault_path.name,
+                "absolute_path": str(self.vault_path.resolve()),
+            },
+            "llm": {
+                "provider": self.llm_provider or "client-managed",
+                "model": self.llm_model or "not specified",
+            },
+            "capabilities": {
+                "answer_generation": self.llm_provider is not None,
+                "context_retrieval": True,
+                "graph_traversal": True,
+                "embeddings": False,
+            },
+        }
+
+    async def get_vault_info(self) -> dict[str, Any]:
+        """Get information about the currently configured vault.
+
+        Returns essential information about the vault being used by this
+        MCP server instance. Use this when you need to confirm vault location.
+
+        Returns:
+            Dictionary with vault configuration details
+        """
+        try:
+            return {
+                "success": True,
+                "vault": {
+                    "path": str(self.vault_path),
+                    "name": self.vault_path.name,
+                    "exists": self.vault_path.exists(),
+                    "absolute_path": str(self.vault_path.resolve()),
+                },
+                "llm_config": {
+                    "provider": self.llm_provider or "none (client-managed)",
+                    "model": self.llm_model or "not specified",
+                },
+                "message": f"Currently using vault: {self.vault_path.name} at {self.vault_path}",
+            }
+        except Exception as e:
+            logger.error(f"Error getting vault info: {e}")
+            return {
+                "success": False,
+                "error": str(e),
+            }
 
     async def search_vault(
         self,
@@ -110,19 +200,19 @@ class MemoGraphMCPServer:
                 for node in results
             ]
 
-            return {
+            return self._add_vault_context({
                 "success": True,
                 "count": len(formatted_results),
                 "results": formatted_results,
-            }
+            })
 
         except Exception as e:
             logger.error(f"Error searching vault: {e}")
-            return {
+            return self._add_vault_context({
                 "success": False,
                 "error": str(e),
                 "results": [],
-            }
+            })
 
     async def create_memory(
         self,
@@ -154,19 +244,19 @@ class MemoGraphMCPServer:
                 salience=salience,
             )
 
-            return {
+            return self._add_vault_context({
                 "success": True,
                 "message": f"Created memory: {title}",
                 "path": path,
                 "title": title,
-            }
+            })
 
         except Exception as e:
             logger.error(f"Error creating memory: {e}")
-            return {
+            return self._add_vault_context({
                 "success": False,
                 "error": str(e),
-            }
+            })
 
     async def query_with_context(
         self,
@@ -228,31 +318,31 @@ class MemoGraphMCPServer:
                     stream=False,  # No streaming for MCP
                 )
 
-                return {
+                return self._add_vault_context({
                     "success": True,
                     "answer": answer,
                     "sources": formatted_sources,
                     "question": question,
                     "mode": "generated",
-                }
+                })
 
             # Otherwise, return context for client's LLM to use
             else:
-                return {
+                return self._add_vault_context({
                     "success": True,
                     "context": context,
                     "sources": formatted_sources,
                     "question": question,
                     "mode": "context_only",
                     "message": "Use the provided context to answer the question. The context includes relevant memories from the vault with source citations [S1], [S2], etc.",
-                }
+                })
 
         except Exception as e:
             logger.error(f"Error querying with context: {e}")
-            return {
+            return self._add_vault_context({
                 "success": False,
                 "error": str(e),
-            }
+            })
 
     async def get_vault_stats(self) -> dict[str, Any]:
         """Get statistics about the vault.
@@ -278,7 +368,7 @@ class MemoGraphMCPServer:
             for node in all_nodes:
                 all_tags.update(node.tags)
 
-            return {
+            return self._add_vault_context({
                 "success": True,
                 "vault_path": str(self.vault_path),
                 "total_memories": stats["total"],
@@ -287,14 +377,14 @@ class MemoGraphMCPServer:
                 "by_type": type_counts,
                 "total_tags": len(all_tags),
                 "tags": sorted(all_tags),
-            }
+            })
 
         except Exception as e:
             logger.error(f"Error getting vault stats: {e}")
-            return {
+            return self._add_vault_context({
                 "success": False,
                 "error": str(e),
-            }
+            })
 
     async def list_memories(
         self,
@@ -356,19 +446,19 @@ class MemoGraphMCPServer:
                 for node in nodes
             ]
 
-            return {
+            return self._add_vault_context({
                 "success": True,
                 "count": len(formatted),
                 "memories": formatted,
-            }
+            })
 
         except Exception as e:
             logger.error(f"Error listing memories: {e}")
-            return {
+            return self._add_vault_context({
                 "success": False,
                 "error": str(e),
                 "memories": [],
-            }
+            })
 
     async def get_memory(self, memory_id: str) -> dict[str, Any]:
         """Get full content of a specific memory.
@@ -383,12 +473,12 @@ class MemoGraphMCPServer:
             node = self.kernel.graph.get(memory_id)
 
             if not node:
-                return {
+                return self._add_vault_context({
                     "success": False,
                     "error": f"Memory not found: {memory_id}",
-                }
+                })
 
-            return {
+            return self._add_vault_context({
                 "success": True,
                 "memory": {
                     "id": node.id,
@@ -402,14 +492,14 @@ class MemoGraphMCPServer:
                     "created_at": node.created_at.isoformat() if node.created_at else None,
                     "modified_at": node.modified_at.isoformat() if node.modified_at else None,
                 },
-            }
+            })
 
         except Exception as e:
             logger.error(f"Error getting memory: {e}")
-            return {
+            return self._add_vault_context({
                 "success": False,
                 "error": str(e),
-            }
+            })
 
     async def import_document(
         self,
@@ -442,17 +532,17 @@ class MemoGraphMCPServer:
                 overwrite=False,
             )
 
-            return {
+            return self._add_vault_context({
                 "success": success,
                 "message": message,
-            }
+            })
 
         except Exception as e:
             logger.error(f"Error importing document: {e}")
-            return {
+            return self._add_vault_context({
                 "success": False,
                 "error": str(e),
-            }
+            })
 
     async def delete_memory(self, memory_id: str) -> dict[str, Any]:
         """Delete a memory from the vault.
@@ -472,10 +562,10 @@ class MemoGraphMCPServer:
                     break
 
             if not memory_path or not memory_path.exists():
-                return {
+                return self._add_vault_context({
                     "success": False,
                     "error": f"Memory not found: {memory_id}",
-                }
+                })
 
             # Get memory info before deletion
             node = self.kernel.graph.get(memory_id)
@@ -490,18 +580,18 @@ class MemoGraphMCPServer:
 
             logger.info(f"Deleted memory: {memory_id}")
 
-            return {
+            return self._add_vault_context({
                 "success": True,
                 "message": f"Deleted memory: {title}",
                 "memory_id": memory_id,
-            }
+            })
 
         except Exception as e:
             logger.error(f"Error deleting memory: {e}")
-            return {
+            return self._add_vault_context({
                 "success": False,
                 "error": str(e),
-            }
+            })
 
     async def update_memory(
         self,
@@ -589,18 +679,18 @@ class MemoGraphMCPServer:
 
             logger.info(f"Updated memory: {memory_id}")
 
-            return {
+            return self._add_vault_context({
                 "success": True,
                 "message": f"Updated memory: {frontmatter['title']}",
                 "memory_id": memory_id,
-            }
+            })
 
         except Exception as e:
             logger.error(f"Error updating memory: {e}")
-            return {
+            return self._add_vault_context({
                 "success": False,
                 "error": str(e),
-            }
+            })
 
     async def list_available_tools(self) -> dict[str, Any]:
         """List all available MCP tools with descriptions.
@@ -629,8 +719,9 @@ class MemoGraphMCPServer:
                     "read": ["get_memory", "list_memories"],
                     "update": ["update_memory"],
                     "delete": ["delete_memory"],
-                    "analytics": ["get_vault_stats"],
+                    "analytics": ["get_vault_info", "get_vault_stats"],
                     "discovery": ["list_available_tools"],
+                    "autonomous": ["auto_hook_query", "auto_hook_response", "configure_autonomous_mode", "get_autonomous_config"],
                 },
             }
         except Exception as e:
@@ -639,6 +730,98 @@ class MemoGraphMCPServer:
                 "success": False,
                 "error": str(e),
             }
+
+    # ==================== Autonomous Hooks Methods ====================
+
+    async def auto_hook_query(
+        self,
+        user_query: str,
+        conversation_id: str | None = None,
+        auto_search: bool | None = None,
+        auto_save_query: bool | None = None,
+    ) -> dict[str, Any]:
+        """Autonomous hook for every user query.
+        
+        Automatically searches vault and optionally saves the query.
+        
+        Args:
+            user_query: The user's query/question
+            conversation_id: Optional conversation ID for tracking
+            auto_search: Override auto_search setting
+            auto_save_query: Override auto_save_queries setting
+        
+        Returns:
+            Dictionary with context, sources, and actions performed
+        """
+        return await self.autonomous_hooks.auto_hook_query(
+            user_query=user_query,
+            conversation_id=conversation_id,
+            auto_search=auto_search,
+            auto_save_query=auto_save_query,
+        )
+
+    async def auto_hook_response(
+        self,
+        user_query: str,
+        ai_response: str,
+        sources_used: list[dict[str, Any]] | None = None,
+        conversation_id: str | None = None,
+        auto_save: bool | None = None,
+    ) -> dict[str, Any]:
+        """Autonomous hook after AI responds.
+        
+        Saves the complete interaction as a memory.
+        
+        Args:
+            user_query: Original user query
+            ai_response: AI's response
+            sources_used: List of source memories that were used
+            conversation_id: Optional conversation ID
+            auto_save: Override auto_save_responses setting
+        
+        Returns:
+            Dictionary with save result
+        """
+        return await self.autonomous_hooks.auto_hook_response(
+            user_query=user_query,
+            ai_response=ai_response,
+            sources_used=sources_used,
+            conversation_id=conversation_id,
+            auto_save=auto_save,
+        )
+
+    async def configure_autonomous_mode(
+        self,
+        auto_search: bool | None = None,
+        auto_save_queries: bool | None = None,
+        auto_save_responses: bool | None = None,
+        min_query_length: int | None = None,
+    ) -> dict[str, Any]:
+        """Configure autonomous hooks settings.
+        
+        Args:
+            auto_search: Enable/disable auto-search
+            auto_save_queries: Enable/disable saving queries
+            auto_save_responses: Enable/disable saving responses
+            min_query_length: Minimum query length to process
+        
+        Returns:
+            Dictionary with updated configuration
+        """
+        return await self.autonomous_hooks.configure(
+            auto_search=auto_search,
+            auto_save_queries=auto_save_queries,
+            auto_save_responses=auto_save_responses,
+            min_query_length=min_query_length,
+        )
+
+    async def get_autonomous_config(self) -> dict[str, Any]:
+        """Get current autonomous hooks configuration.
+        
+        Returns:
+            Dictionary with current settings and recommendations
+        """
+        return self.autonomous_hooks.get_configuration()
 
     def get_tools_schema(self) -> list[dict[str, Any]]:
         """Get MCP tools schema for registration.
@@ -740,8 +923,16 @@ class MemoGraphMCPServer:
                 },
             },
             {
+                "name": "get_vault_info",
+                "description": "Get information about the currently configured MemoGraph vault (path, name, configuration). Use this when you need to know which vault is being used.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {},
+                },
+            },
+            {
                 "name": "get_vault_stats",
-                "description": "Get statistics about the MemoGraph vault",
+                "description": "Get statistics about the currently configured MemoGraph vault (memory counts, types, tags)",
                 "inputSchema": {
                     "type": "object",
                     "properties": {},
@@ -874,6 +1065,102 @@ class MemoGraphMCPServer:
             {
                 "name": "list_available_tools",
                 "description": "List all available MCP tools with their descriptions and categories",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {},
+                },
+            },
+            {
+                "name": "auto_hook_query",
+                "description": "Autonomous hook for user queries - automatically searches vault and provides context. Call this at the START of every user interaction to get relevant context automatically.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "user_query": {
+                            "type": "string",
+                            "description": "The user's query/question",
+                        },
+                        "conversation_id": {
+                            "type": "string",
+                            "description": "Optional conversation ID for tracking (optional)",
+                        },
+                        "auto_search": {
+                            "type": "boolean",
+                            "description": "Override auto_search setting (optional)",
+                        },
+                        "auto_save_query": {
+                            "type": "boolean",
+                            "description": "Override auto_save_queries setting (optional)",
+                        },
+                    },
+                    "required": ["user_query"],
+                },
+            },
+            {
+                "name": "auto_hook_response",
+                "description": "Autonomous hook for AI responses - saves the complete interaction. Call this at the END of every user interaction to save the conversation automatically.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "user_query": {
+                            "type": "string",
+                            "description": "Original user query",
+                        },
+                        "ai_response": {
+                            "type": "string",
+                            "description": "AI's response to the query",
+                        },
+                        "sources_used": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "id": {"type": "string"},
+                                    "title": {"type": "string"},
+                                },
+                            },
+                            "description": "List of source memories that were used (optional)",
+                        },
+                        "conversation_id": {
+                            "type": "string",
+                            "description": "Optional conversation ID (optional)",
+                        },
+                        "auto_save": {
+                            "type": "boolean",
+                            "description": "Override auto_save_responses setting (optional)",
+                        },
+                    },
+                    "required": ["user_query", "ai_response"],
+                },
+            },
+            {
+                "name": "configure_autonomous_mode",
+                "description": "Configure autonomous hooks behavior (enable/disable auto-search, auto-save, etc.)",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "auto_search": {
+                            "type": "boolean",
+                            "description": "Enable/disable automatic vault search on every query",
+                        },
+                        "auto_save_queries": {
+                            "type": "boolean",
+                            "description": "Enable/disable saving every query (usually disabled to avoid noise)",
+                        },
+                        "auto_save_responses": {
+                            "type": "boolean",
+                            "description": "Enable/disable saving complete interactions (recommended: enabled)",
+                        },
+                        "min_query_length": {
+                            "type": "number",
+                            "description": "Minimum query length to process (default: 10)",
+                        },
+                    },
+                },
+            },
+            {
+                "name": "get_autonomous_config",
+                "description": "Get current autonomous hooks configuration and recommendations",
                 "inputSchema": {
                     "type": "object",
                     "properties": {},

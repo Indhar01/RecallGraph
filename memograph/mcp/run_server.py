@@ -71,6 +71,8 @@ async def handle_call_tool(name: str, arguments: dict[str, Any]) -> list[TextCon
             result = await memograph_server.create_memory(**arguments)
         elif name == "query_with_context":
             result = await memograph_server.query_with_context(**arguments)
+        elif name == "get_vault_info":
+            result = await memograph_server.get_vault_info()
         elif name == "get_vault_stats":
             result = await memograph_server.get_vault_stats()
         elif name == "list_memories":
@@ -79,6 +81,12 @@ async def handle_call_tool(name: str, arguments: dict[str, Any]) -> list[TextCon
             result = await memograph_server.get_memory(**arguments)
         elif name == "import_document":
             result = await memograph_server.import_document(**arguments)
+        elif name == "delete_memory":
+            result = await memograph_server.delete_memory(**arguments)
+        elif name == "update_memory":
+            result = await memograph_server.update_memory(**arguments)
+        elif name == "list_available_tools":
+            result = await memograph_server.list_available_tools()
         else:
             result = {
                 "success": False,
