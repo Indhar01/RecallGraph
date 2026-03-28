@@ -1,4 +1,0 @@
-{"id":"9884cdf8-d805-4ddd-abb8-c34870333b8c","ts":"2026-03-28T17:06:45.503Z","path":"C:\\Users\\INDIRAKUMARS\\Documents\\Projects\\MemoGraph\\.ruff.toml","version":"1.0.0","taskID":"7bba1cab-e110-4075-b56a-3e4815929833"}
-{"id":"3c863ca3-2638-4bdb-906c-aac7bcd429c1","ts":"2026-03-28T17:06:52.614Z","path":"C:/Users/INDIRAKUMARS/Documents/Projects/MemoGraph/memograph/web/backend/models/__init__.py","version":"1.0.0","taskID":"7bba1cab-e110-4075-b56a-3e4815929833"}
-{"id":"df3238fa-dbb7-41c7-830a-b8e28e2e6507","ts":"2026-03-28T17:07:05.743Z","path":"C:/Users/INDIRAKUMARS/Documents/Projects/MemoGraph/memograph/core/kernel_async.py","version":"1.0.0","taskID":"7bba1cab-e110-4075-b56a-3e4815929833"}
-{"id":"88513970-477a-4adc-9387-e8ff84fc864d","ts":"2026-03-28T17:07:11.700Z","path":"C:/Users/INDIRAKUMARS/Documents/Projects/MemoGraph/memograph/core/validation.py","version":"1.0.0","taskID":"7bba1cab-e110-4075-b56a-3e4815929833"}

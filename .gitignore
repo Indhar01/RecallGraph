@@ -51,7 +51,9 @@ TIMEOUT_FIX_SUMMARY.md
 test_chat_improvements.py
 
 node_modules/
-docs/*
+docs/
+.bob/
+.cline/
 
 # Testing
 .pytest_cache/
