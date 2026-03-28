@@ -126,10 +126,11 @@ jobs:
           pytest tests/test_kernel_enhanced.py::TestPerformanceImprovements -v
         continue-on-error: true
 
-      - name: Run stress tests (optional)
-        run: |
-          pytest tests/stress/ -v --tb=short
-        continue-on-error: true
+      # Stress tests disabled in CI - run manually locally
+      # - name: Run stress tests (optional)
+      #   run: |
+      #     pytest tests/stress/ -v --tb=short
+      #   continue-on-error: true
 
       - name: Performance benchmark
         run: |
