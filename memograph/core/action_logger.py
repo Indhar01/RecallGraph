@@ -23,6 +23,7 @@ Example:
 import json
 import logging
 import threading
+import time
 from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path
@@ -41,6 +42,7 @@ class Action:
     action_type: ActionType
     summary: str
     timestamp: str
+    timestamp_ns: int | None = None
     metadata: dict[str, Any] = None
     user: str | None = None
 
@@ -104,6 +106,7 @@ class ActionLogger:
             action_type=action_type,
             summary=summary,
             timestamp=datetime.now().isoformat(),
+            timestamp_ns=time.time_ns(),
             metadata=metadata or {},
             user=user,
         )
@@ -273,10 +276,18 @@ class ActionLogger:
                 logger.info("Cleared all action history")
             else:
                 history = self._read_history()
+                cutoff_ns = int(before_date.timestamp() * 1_000_000_000)
+
+                def _is_on_or_after_cutoff(action: dict[str, Any]) -> bool:
+                    action_ns = action.get("timestamp_ns")
+                    if isinstance(action_ns, int):
+                        return action_ns >= cutoff_ns
+                    return datetime.fromisoformat(action["timestamp"]) >= before_date
+
                 filtered = [
                     a
                     for a in history
-                    if datetime.fromisoformat(a["timestamp"]) >= before_date
+                    if _is_on_or_after_cutoff(a)
                 ]
                 self._write_history(filtered)
                 logger.info(
