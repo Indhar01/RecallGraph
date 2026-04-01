@@ -1,72 +1,39 @@
-name: memograph
-version: 0.1.0
-description: >
-  Graph-based memory system for LLMs. Combines knowledge graphs, hybrid retrieval
-  (keyword + semantic + graph traversal), and markdown-native storage to give LLMs
-  persistent, queryable memory.
-license: MIT
-homepage: https://github.com/Indhar01/MemoGraph
-repository: https://github.com/Indhar01/MemoGraph
-
-runtime: python
-install: pip install ".[all]"
-
 startCommand:
   type: stdio
-  command: python
-  args:
-    - -m
-    - memograph.mcp.run_server
-    - --vault
-    - "${config.vault}"
-
-configSchema:
-  type: object
-  properties:
-    vault:
-      type: string
-      description: >
-        Absolute path to your MemoGraph vault directory (the folder containing your .md memory files).
-      default: "~/my-vault"
-    provider:
-      type: string
-      description: >
-        LLM provider for AI-generated answers in query_with_context. Optional —
-        if not set, raw context is returned for the client LLM to use.
-      enum: ["ollama", "claude"]
-    model:
-      type: string
-      description: >
-        Specific model name for the LLM provider (e.g. "llama3" for ollama,
-        "claude-opus-4-6" for claude). Optional — uses provider default if omitted.
-  required: []
-
-tools:
-  - name: search_vault
-    description: Search memories using keyword or semantic search
-  - name: create_memory
-    description: Create a new memory in the vault
-  - name: query_with_context
-    description: Ask a question and get an answer grounded in vault memories
-  - name: get_vault_info
-    description: Get information about the configured vault
-  - name: get_vault_stats
-    description: Get statistics about memory counts, types, and tags
-  - name: list_memories
-    description: List memories with optional filters
-  - name: get_memory
-    description: Get full content of a specific memory by ID
-  - name: update_memory
-    description: Update an existing memory's title, content, tags, or salience
-  - name: delete_memory
-    description: Delete a memory from the vault
-  - name: import_document
-    description: Import a TXT, PDF, or DOCX document into the vault
-  - name: relate_memories
-    description: Create a wikilink connection between two memories
-  - name: search_by_graph
-    description: Traverse the knowledge graph from a memory to find connected memories
-  - name: find_path
-    description: Find the shortest path between two memories through the graph
-  - name: bulk_create
-    description: Create multiple memories in one operation
+  configSchema:
+    type: object
+    required:
+      - vault
+    properties:
+      vault:
+        type: string
+        title: "Vault Path"
+        description: >
+          Absolute path to your MemoGraph vault directory
+          (the folder containing your .md memory files).
+        default: "~/my-vault"
+      provider:
+        type: string
+        title: "LLM Provider"
+        description: >
+          LLM provider for AI-generated answers in query_with_context.
+          Optional — if not set, raw context is returned.
+        enum:
+          - "ollama"
+          - "claude"
+      model:
+        type: string
+        title: "LLM Model"
+        description: >
+          Specific model name for the LLM provider
+          (e.g. "llama3" for ollama, "claude-opus-4-6" for claude).
+          Optional — uses provider default if omitted.
+  commandFunction: >
+    (config) => ({
+      command: "python",
+      args: ["-m", "memograph.mcp.run_server", "--vault", config.vault || "~/my-vault"],
+      env: {
+        ...(config.provider ? { MEMOGRAPH_PROVIDER: config.provider } : {}),
+        ...(config.model ? { MEMOGRAPH_MODEL: config.model } : {})
+      }
+    })
