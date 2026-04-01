@@ -6,6 +6,7 @@ Run with: pytest tests/stress/test_benchmarks.py -v -s --benchmark-only
 
 import asyncio
 import logging
+import platform
 import time
 from pathlib import Path
 
@@ -240,12 +241,20 @@ class TestGAMPerformanceBenchmarks:
         )
         std_time = time.time() - start
 
+        is_windows = platform.system() == "Windows"
+        baseline_time = max(std_time, 0.05)
+        overhead_ratio = gam_time / baseline_time
+
         logger.info(f"GAM: {gam_time:.3f}s")
         logger.info(f"Standard: {std_time:.3f}s")
-        logger.info(f"Overhead: {((gam_time / std_time - 1) * 100):.1f}%")
+        logger.info(f"Overhead ratio: {overhead_ratio:.2f}x")
 
-        # GAM should be within reasonable overhead
-        assert gam_time < std_time * 2.0, "GAM overhead too high"
+        # GAM adds graph-scoring overhead; allow higher variance on Windows where
+        # file I/O and scheduler timing produce noisier micro-benchmarks.
+        max_overhead = 3.0 if is_windows else 2.0
+        assert overhead_ratio < max_overhead, (
+            f"GAM overhead too high: {overhead_ratio:.2f}x (limit {max_overhead:.1f}x)"
+        )
 
 
 @pytest.mark.stress

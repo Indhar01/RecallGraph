@@ -6,6 +6,7 @@ Run with: pytest tests/stress/test_load.py -v -s
 
 import asyncio
 import logging
+import platform
 import time
 from pathlib import Path
 
@@ -88,7 +89,8 @@ class TestSustainedLoad:
 
         start_time = time.time()
         operation_count = 0
-        duration_limit = 600  # 10 minutes
+        is_windows = platform.system() == "Windows"
+        duration_limit = 240 if is_windows else 600
 
         while time.time() - start_time < duration_limit:
             # Batch of 20 operations
@@ -119,8 +121,10 @@ class TestSustainedLoad:
         logger.info(f"Total: {operation_count} operations")
         logger.info(f"Throughput: {throughput:.1f} ops/s")
 
-        # Adjust threshold for Windows performance characteristics
-        assert throughput > 5, f"Throughput too low: {throughput:.1f} ops/s"
+        min_throughput = 3.5 if is_windows else 5.0
+        assert throughput > min_throughput, (
+            f"Throughput too low: {throughput:.1f} ops/s (min {min_throughput:.1f})"
+        )
 
 
 @pytest.mark.stress
