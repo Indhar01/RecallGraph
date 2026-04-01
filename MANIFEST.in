@@ -1,4 +1,7 @@
 include requirements.txt
 include README.md
 include LICENSE
-recursive-include mnemo *.py
+include smithery.json
+recursive-include memograph *.py
+recursive-include memograph *.json
+include .well-known/mcp/server-card.json
