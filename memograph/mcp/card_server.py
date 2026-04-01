@@ -1,6 +1,5 @@
 """Minimal HTTP server to serve /.well-known/mcp/server-card.json for Smithery scanning."""
 
-import json
 import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
