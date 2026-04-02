@@ -3,7 +3,7 @@
 [![PyPI version](https://img.shields.io/pypi/v/memograph)](https://pypi.org/project/memograph/)
 [![Python Version](https://img.shields.io/pypi/pyversions/memograph)](https://pypi.org/project/memograph/)
 [![License](https://img.shields.io/github/license/Indhar01/MemoGraph)](https://github.com/Indhar01/MemoGraph/blob/main/LICENSE)
-[![Smithery](https://smithery.ai/badge/@indhar01/memograph)](https://smithery.ai/server/@indhar01/memograph)
+[![MCP Registry](https://img.shields.io/badge/MCP_Registry-Published-blue)](https://modelcontextprotocol.io/registry)
 [![MCP](https://img.shields.io/badge/MCP-Compatible-blue)](https://modelcontextprotocol.io)
 [![Code style: ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
 [![pre-commit](https://img.shields.io/badge/pre--commit-enabled-brightgreen?logo=pre-commit&logoColor=white)](https://github.com/pre-commit/pre-commit)
@@ -142,6 +142,39 @@ Add to your `claude_desktop_config.json`:
   }
 }
 ```
+
+### Install from MCP Registry
+
+**NEW**: MemoGraph is now available in the official MCP Registry!
+
+```bash
+# Install via MCP CLI (if available)
+mcp install io.github.indhar01/memograph
+
+# Or manually configure in your MCP client:
+```
+
+```json
+{
+  "mcpServers": {
+    "memograph": {
+      "command": "python",
+      "args": ["-m", "memograph.mcp.run_server"],
+      "env": {
+        "MEMOGRAPH_VAULT": "~/my-vault"
+      }
+    }
+  }
+}
+```
+
+**Benefits of MCP Registry:**
+- ✅ Official registry backed by Anthropic, GitHub, and Microsoft
+- ✅ Automatic version updates from PyPI
+- ✅ Discoverable by all MCP-compatible clients
+- ✅ Verified and trusted installation
+
+See **[MCP_REGISTRY_GUIDE.md](docs/MCP_REGISTRY_GUIDE.md)** for complete submission and configuration guide.
 
 ### Usage Examples
 
@@ -324,6 +357,7 @@ We maintain high code quality standards:
 
 ## 📚 Documentation
 
+- **[MCP Registry Guide](docs/MCP_REGISTRY_GUIDE.md)** - Publishing to official MCP Registry
 - **[AGENTS.md](AGENTS.md)** - Guide for AI agents working with this codebase
 - **[Contributing Guide](CONTRIBUTING.md)** - How to contribute to the project
 - **[Code of Conduct](CODE_OF_CONDUCT.md)** - Community guidelines
@@ -365,11 +399,13 @@ This project is in active development with a focus on code quality and stability
 - ⚠️ API may change in minor versions until v1.0.0
 
 **Recent Improvements**:
+- 🎉 **Published to official MCP Registry** (io.github.indhar01/memograph)
 - Enhanced code quality with Ruff linting and formatting
 - Added comprehensive type checking with MyPy
 - Improved project structure and organization
-- Updated MCP server with 14 tools including autonomous features
+- Updated MCP server with 19 tools including autonomous features and graph operations
 - Added AGENTS.md for AI assistant integration
+- Created comprehensive MCP Registry submission guide
 
 ---
 
