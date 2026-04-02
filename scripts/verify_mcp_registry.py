@@ -15,9 +15,9 @@ from urllib.error import URLError
 
 def print_header(title: str) -> None:
     """Print a section header."""
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print(f"  {title}")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
 
 
 def print_status(check: str, status: bool, message: str = "") -> None:
@@ -50,7 +50,14 @@ def check_server_json() -> bool:
         return False
 
     # Check required fields
-    required_fields = ["$schema", "name", "description", "repository", "version", "packages"]
+    required_fields = [
+        "$schema",
+        "name",
+        "description",
+        "repository",
+        "version",
+        "packages",
+    ]
     missing_fields = [field for field in required_fields if field not in data]
 
     if missing_fields:
@@ -61,7 +68,9 @@ def check_server_json() -> bool:
     print_status("Required fields present", True)
 
     # Check $schema
-    expected_schema = "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json"
+    expected_schema = (
+        "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json"
+    )
     actual_schema = data.get("$schema", "")
     if actual_schema != expected_schema:
         print_status("Correct $schema", False, "Wrong schema URL")
