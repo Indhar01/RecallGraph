@@ -7,17 +7,17 @@ from memograph.ai.gap_detector import (
     GapDetector,
     KnowledgeGap,
     TopicCluster,
-    LearningPath
+    LearningPath,
 )
 
 __all__ = [
-    'ContentAnalyzer',
-    'AutoTagger',
-    'TagSuggestion',
-    'LinkSuggester',
-    'LinkSuggestion',
-    'GapDetector',
-    'KnowledgeGap',
-    'TopicCluster',
-    'LearningPath'
+    "ContentAnalyzer",
+    "AutoTagger",
+    "TagSuggestion",
+    "LinkSuggester",
+    "LinkSuggestion",
+    "GapDetector",
+    "KnowledgeGap",
+    "TopicCluster",
+    "LearningPath",
 ]

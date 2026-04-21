@@ -28,6 +28,7 @@ ProgressCallback = Callable[[int, int, str, str], None]
 
 class BatchSyncCancelled(Exception):
     """Exception raised when batch sync is cancelled."""
+
     pass
 
 
@@ -57,7 +58,9 @@ class ObsidianSync:
         self.memograph_vault = Path(memograph_vault)
         self.kernel = MemoryKernel(str(memograph_vault))
         self.parser = ObsidianParser(cache_size=256)  # Enable LRU caching
-        self.state = SyncState(memograph_vault / ".obsidian_sync_state.json", use_sqlite=True)
+        self.state = SyncState(
+            memograph_vault / ".obsidian_sync_state.json", use_sqlite=True
+        )
         self.resolver = ConflictResolver(conflict_strategy)
         self.perf_tracker = get_tracker()
 
@@ -65,7 +68,7 @@ class ObsidianSync:
         self.enable_queue = enable_queue
         self.max_queue_size = max_queue_size
         self.rate_limit_delay = rate_limit_delay
-        
+
         # Sync queue state
         self._sync_queue: deque = deque(maxlen=max_queue_size)
         self._queued_files: Set[str] = set()
@@ -73,11 +76,11 @@ class ObsidianSync:
         self._is_syncing = False
         self._last_sync_time = 0.0
         self._queue_processor_task: Optional[asyncio.Task] = None
-        
+
         # Batch sync state
         self._batch_cancelled = False
         self._current_batch_progress: Dict[str, Any] = {}
-        
+
         # Error tracking
         self._error_history: List[Dict[str, Any]] = []
         self._error_count = 0
@@ -104,6 +107,7 @@ class ObsidianSync:
                 - timestamp: ISO timestamp of sync completion
         """
         import time
+
         start_time = time.time()
         stats = {"pulled": 0, "pushed": 0, "conflicts": 0, "errors": []}
         self._is_syncing = True
@@ -140,7 +144,9 @@ class ObsidianSync:
 
         return stats
 
-    async def queue_file_sync(self, file_path: str, event_type: str = "modified") -> bool:
+    async def queue_file_sync(
+        self, file_path: str, event_type: str = "modified"
+    ) -> bool:
         """Add a file to the sync queue.
 
         Args:
@@ -228,7 +234,7 @@ class ObsidianSync:
             if not self.state.has_file_changed(str(file_path_obj), current_hash):
                 self.perf_tracker.record_cache_hit()
                 return
-            
+
             self.perf_tracker.record_cache_miss()
 
             # Check if exists in MemoGraph
@@ -268,7 +274,9 @@ class ObsidianSync:
             )
 
             # Update sync state with file metadata
-            self.state.update_file_hash(str(file_path_obj), current_hash, file_size, file_mtime)
+            self.state.update_file_hash(
+                str(file_path_obj), current_hash, file_size, file_mtime
+            )
             self.perf_tracker.record_file_processed(file_size)
 
         except Exception as e:
@@ -297,7 +305,7 @@ class ObsidianSync:
             "max_queue_size": self.max_queue_size,
             "rate_limit_delay": self.rate_limit_delay,
         }
-    
+
     async def batch_sync(
         self,
         file_paths: Optional[List[Path]] = None,
@@ -307,7 +315,7 @@ class ObsidianSync:
         enable_rollback: bool = False,
     ) -> Dict[str, Any]:
         """Perform batch sync operation on multiple files efficiently.
-        
+
         Args:
             file_paths: List of file paths to sync. If None, syncs all markdown files.
             direction: Sync direction - "pull", "push", or "bidirectional"
@@ -315,7 +323,7 @@ class ObsidianSync:
             progress_callback: Optional callback for progress updates
                 Called with (current_index, total_files, current_file_path, status)
             enable_rollback: Enable automatic rollback on critical errors
-        
+
         Returns:
             Dictionary with batch sync statistics:
                 - pulled: Number of notes pulled
@@ -329,6 +337,7 @@ class ObsidianSync:
                 - rolled_back: Whether state was rolled back (if enable_rollback=True)
         """
         import time
+
         start_time = time.time()
         stats = {
             "pulled": 0,
@@ -339,21 +348,21 @@ class ObsidianSync:
             "processed": 0,
             "rolled_back": False,
         }
-        
+
         # Reset cancellation flag and set syncing state
         self._batch_cancelled = False
         self._is_syncing = True
-        
+
         # Create checkpoint if rollback is enabled
         checkpoint = None
         if enable_rollback:
             checkpoint = self.state.create_checkpoint()
-        
+
         try:
             # Ensure graph is loaded (only if empty)
             if not self.kernel.graph or not list(self.kernel.graph.all_nodes()):
                 self.kernel.ingest()
-            
+
             # Get files to process based on direction
             if file_paths is None:
                 if direction == "push":
@@ -366,13 +375,15 @@ class ObsidianSync:
                     ]
                     file_paths = []
                     for memory in obsidian_memories:
-                        obsidian_path = memory.frontmatter.get("meta", {}).get("obsidian_path")
+                        obsidian_path = memory.frontmatter.get("meta", {}).get(
+                            "obsidian_path"
+                        )
                         if obsidian_path:
                             file_paths.append(Path(obsidian_path))
                 elif direction == "bidirectional":
                     # For bidirectional, combine vault files AND memory paths
                     vault_files = set(self.vault_path.rglob("*.md"))
-                    
+
                     # Get paths from memories
                     all_nodes = list(self.kernel.graph.all_nodes())
                     obsidian_memories = [
@@ -382,10 +393,12 @@ class ObsidianSync:
                     ]
                     memory_paths = set()
                     for memory in obsidian_memories:
-                        obsidian_path = memory.frontmatter.get("meta", {}).get("obsidian_path")
+                        obsidian_path = memory.frontmatter.get("meta", {}).get(
+                            "obsidian_path"
+                        )
                         if obsidian_path:
                             memory_paths.add(Path(obsidian_path))
-                    
+
                     # Combine both sets
                     file_paths = list(vault_files | memory_paths)
                 else:
@@ -393,25 +406,27 @@ class ObsidianSync:
                     file_paths = list(self.vault_path.rglob("*.md"))
             else:
                 file_paths = [Path(p) for p in file_paths]
-            
+
             total_files = len(file_paths)
-            
+
             # Process files in batches
             for batch_start in range(0, total_files, batch_size):
                 # Check for cancellation
                 if self._batch_cancelled:
                     stats["cancelled"] = True
                     break
-                
+
                 # Check if error rate limit exceeded
                 if self._error_count >= self._error_rate_limit:
                     stats["rate_limited"] = True
-                    stats["errors"].append(f"Error rate limit exceeded ({self._error_count} errors)")
+                    stats["errors"].append(
+                        f"Error rate limit exceeded ({self._error_count} errors)"
+                    )
                     break
-                
+
                 batch_end = min(batch_start + batch_size, total_files)
                 batch = file_paths[batch_start:batch_end]
-                
+
                 # Update progress tracking
                 self._current_batch_progress = {
                     "files_processed": batch_start,
@@ -419,7 +434,7 @@ class ObsidianSync:
                     "current_batch_start": batch_start,
                     "current_batch_end": batch_end,
                 }
-                
+
                 # Process batch
                 if direction in ["pull", "bidirectional"]:
                     pull_stats = await self._batch_pull(
@@ -432,7 +447,7 @@ class ObsidianSync:
                     stats["conflicts"] += pull_stats["conflicts"]
                     stats["errors"].extend(pull_stats.get("errors", []))
                     stats["processed"] += pull_stats["count"]
-                
+
                 if direction in ["push", "bidirectional"] and not self._batch_cancelled:
                     push_stats = await self._batch_push(
                         batch,
@@ -443,18 +458,18 @@ class ObsidianSync:
                     stats["pushed"] += push_stats["count"]
                     stats["conflicts"] += push_stats["conflicts"]
                     stats["errors"].extend(push_stats.get("errors", []))
-                
+
                 # Allow other tasks to run between batches
                 await asyncio.sleep(0)
-            
+
             if not stats["cancelled"]:
                 self.state.mark_synced()
-            
+
         except BatchSyncCancelled:
             stats["cancelled"] = True
         except Exception as e:
             stats["errors"].append(f"Batch sync failed: {str(e)}")
-            
+
             # Rollback on critical error if enabled
             if enable_rollback and checkpoint and self._is_critical_error(e):
                 try:
@@ -467,9 +482,9 @@ class ObsidianSync:
             self._current_batch_progress = {}
             stats["duration"] = time.time() - start_time
             stats["timestamp"] = datetime.now().isoformat()
-        
+
         return stats
-    
+
     async def _batch_pull(
         self,
         file_paths: List[Path],
@@ -478,24 +493,24 @@ class ObsidianSync:
         progress_callback: Optional[ProgressCallback],
     ) -> Dict[str, Any]:
         """Pull a batch of files from Obsidian to MemoGraph.
-        
+
         Args:
             file_paths: List of file paths to pull
             batch_offset: Offset for progress reporting
             total_files: Total number of files being processed
             progress_callback: Optional progress callback
-        
+
         Returns:
             Dictionary with pull statistics
         """
         stats = {"count": 0, "conflicts": 0, "errors": []}
-        
+
         for idx, md_file in enumerate(file_paths):
             if self._batch_cancelled:
                 raise BatchSyncCancelled()
-            
+
             current_idx = batch_offset + idx
-            
+
             if progress_callback:
                 progress_callback(
                     current_idx + 1,
@@ -503,24 +518,24 @@ class ObsidianSync:
                     str(md_file),
                     "pulling",
                 )
-            
+
             try:
                 # Parse Obsidian note
                 note_data = self.parser.parse_file(md_file)
                 file_size = md_file.stat().st_size
                 file_mtime = md_file.stat().st_mtime
-                
+
                 # Check if already synced and unchanged
                 current_hash = self._hash_content(note_data["content"])
                 if not self.state.has_file_changed(str(md_file), current_hash):
                     self.perf_tracker.record_cache_hit()
                     continue
-                
+
                 self.perf_tracker.record_cache_miss()
-                
+
                 # Check if exists in MemoGraph
                 existing = self._find_memory_by_path(str(md_file))
-                
+
                 if existing:
                     # Check for conflicts
                     existing_data = self._node_to_dict(existing)
@@ -535,12 +550,12 @@ class ObsidianSync:
                         resolved = note_data
                 else:
                     resolved = note_data
-                
+
                 # Import to MemoGraph
                 memory_type = self._parse_memory_type(
                     resolved.get("metadata", {}).get("memory_type")
                 )
-                
+
                 try:
                     await self.kernel.remember_async(
                         title=resolved["title"],
@@ -557,20 +572,25 @@ class ObsidianSync:
                     )
                 except Exception as remember_error:
                     # Record error and re-raise to outer handler
-                    self._record_error(remember_error, transient=self._is_transient_error(remember_error))
+                    self._record_error(
+                        remember_error,
+                        transient=self._is_transient_error(remember_error),
+                    )
                     raise
-                
+
                 # Update sync state with file metadata
-                self.state.update_file_hash(str(md_file), current_hash, file_size, file_mtime)
+                self.state.update_file_hash(
+                    str(md_file), current_hash, file_size, file_mtime
+                )
                 self.perf_tracker.record_file_processed(file_size)
                 stats["count"] += 1
-                
+
             except Exception as e:
                 self._record_error(e, transient=self._is_transient_error(e))
                 stats["errors"].append(f"{md_file}: {str(e)}")
-        
+
         return stats
-    
+
     async def _batch_push(
         self,
         file_paths: List[Path],
@@ -579,18 +599,18 @@ class ObsidianSync:
         progress_callback: Optional[ProgressCallback],
     ) -> Dict[str, Any]:
         """Push a batch of memories from MemoGraph to Obsidian.
-        
+
         Args:
             file_paths: List of file paths that should be pushed
             batch_offset: Offset for progress reporting
             total_files: Total number of files being processed
             progress_callback: Optional progress callback
-        
+
         Returns:
             Dictionary with push statistics
         """
         stats = {"count": 0, "conflicts": 0, "errors": []}
-        
+
         # Get all memories with obsidian source
         all_nodes = list(self.kernel.graph.all_nodes())
         obsidian_memories = [
@@ -598,7 +618,7 @@ class ObsidianSync:
             for node in all_nodes
             if node.frontmatter.get("meta", {}).get("source") == "obsidian"
         ]
-        
+
         # Filter to only memories whose paths are in the batch
         file_paths_str = {str(p) for p in file_paths}
         batch_memories = [
@@ -606,18 +626,18 @@ class ObsidianSync:
             for memory in obsidian_memories
             if memory.frontmatter.get("meta", {}).get("obsidian_path") in file_paths_str
         ]
-        
+
         for idx, memory in enumerate(batch_memories):
             if self._batch_cancelled:
                 raise BatchSyncCancelled()
-            
+
             try:
                 obsidian_path = memory.frontmatter.get("meta", {}).get("obsidian_path")
                 if not obsidian_path:
                     continue
-                
+
                 file_path = Path(obsidian_path)
-                
+
                 if progress_callback:
                     current_idx = batch_offset + idx
                     progress_callback(
@@ -626,15 +646,15 @@ class ObsidianSync:
                         str(file_path),
                         "pushing",
                     )
-                
+
                 # Get memory data
                 memory_data = self._node_to_dict(memory)
-                
+
                 # Check if file exists in Obsidian
                 if file_path.exists():
                     # Read current Obsidian content
                     current = self.parser.parse_file(file_path)
-                    
+
                     # Check for conflicts
                     if self.resolver.detect_conflict(memory_data, current):
                         resolved = self.resolver.resolve(memory_data, current)
@@ -647,24 +667,24 @@ class ObsidianSync:
                         resolved = memory_data
                 else:
                     resolved = memory_data
-                
+
                 # Write to Obsidian
                 self._write_obsidian_file(file_path, resolved)
-                
+
                 # Update sync state
                 file_hash = self._hash_content(resolved["content"])
                 self.state.update_file_hash(str(file_path), file_hash)
-                
+
                 stats["count"] += 1
-                
+
             except Exception as e:
                 stats["errors"].append(f"{memory.id}: {str(e)}")
-        
+
         return stats
-    
+
     def cancel_batch_sync(self) -> bool:
         """Cancel an ongoing batch sync operation.
-        
+
         Returns:
             True if a batch sync was in progress and will be cancelled
         """
@@ -672,10 +692,10 @@ class ObsidianSync:
             self._batch_cancelled = True
             return True
         return False
-    
+
     def get_batch_progress(self) -> Dict[str, Any]:
         """Get current batch sync progress.
-        
+
         Returns:
             Dictionary with current batch progress information:
                 - is_syncing: Whether batch sync is active
@@ -690,15 +710,17 @@ class ObsidianSync:
             "cancelled": self._batch_cancelled,
             **self._current_batch_progress,
         }
-        
+
         # Calculate progress percentage if data available
         if "files_processed" in progress and "total_files" in progress:
             total = progress["total_files"]
             if total > 0:
-                progress["progress_percentage"] = (progress["files_processed"] / total) * 100
+                progress["progress_percentage"] = (
+                    progress["files_processed"] / total
+                ) * 100
             else:
                 progress["progress_percentage"] = 0
-        
+
         return progress
 
     async def pull_from_obsidian(self) -> Dict[str, Any]:
@@ -726,7 +748,7 @@ class ObsidianSync:
                 if not self.state.has_file_changed(str(md_file), current_hash):
                     self.perf_tracker.record_cache_hit()
                     continue
-                
+
                 self.perf_tracker.record_cache_miss()
 
                 # Check if exists in MemoGraph
@@ -768,11 +790,16 @@ class ObsidianSync:
                     )
                 except Exception as remember_error:
                     # Record error and re-raise to outer handler
-                    self._record_error(remember_error, transient=self._is_transient_error(remember_error))
+                    self._record_error(
+                        remember_error,
+                        transient=self._is_transient_error(remember_error),
+                    )
                     raise
 
                 # Update sync state with file metadata
-                self.state.update_file_hash(str(md_file), current_hash, file_size, file_mtime)
+                self.state.update_file_hash(
+                    str(md_file), current_hash, file_size, file_mtime
+                )
                 self.perf_tracker.record_file_processed(file_size)
                 stats["count"] += 1
 
@@ -838,7 +865,9 @@ class ObsidianSync:
                 file_hash = self._hash_content(resolved["content"])
                 file_size = file_path.stat().st_size if file_path.exists() else 0
                 file_mtime = file_path.stat().st_mtime if file_path.exists() else 0.0
-                self.state.update_file_hash(str(file_path), file_hash, file_size, file_mtime)
+                self.state.update_file_hash(
+                    str(file_path), file_hash, file_size, file_mtime
+                )
                 self.perf_tracker.record_file_processed(file_size)
 
                 stats["count"] += 1
@@ -989,9 +1018,9 @@ class ObsidianSync:
             Number of conflicts cleared
         """
         return self.state.clear_conflicts()
-    
+
     # Error handling and retry methods
-    
+
     async def _retry_with_backoff(
         self,
         operation: Callable,
@@ -1000,29 +1029,29 @@ class ObsidianSync:
         retryable_exceptions: Tuple = (ConnectionError, TimeoutError, OSError),
     ) -> Any:
         """Retry an async operation with exponential backoff.
-        
+
         Args:
             operation: Async callable to retry
             max_attempts: Maximum number of retry attempts
             initial_delay: Initial delay in seconds
             retryable_exceptions: Tuple of exception types that should trigger retry
-        
+
         Returns:
             Result of the operation
-        
+
         Raises:
             The last exception if all retries fail
         """
         delay = initial_delay
         last_exception = None
-        
+
         for attempt in range(max_attempts):
             try:
                 return await operation()
             except retryable_exceptions as e:
                 last_exception = e
                 self._record_error(e, transient=True)
-                
+
                 if attempt < max_attempts - 1:
                     # Wait with exponential backoff
                     await asyncio.sleep(delay)
@@ -1034,18 +1063,18 @@ class ObsidianSync:
                 # Non-retryable exception
                 self._record_error(e, transient=False)
                 raise
-        
+
         # Should not reach here, but just in case
         if last_exception:
             raise last_exception
-    
+
     async def _sync_file_with_retry(
         self,
         file_path: str,
         max_attempts: int = 3,
     ) -> None:
         """Sync a single file with retry logic.
-        
+
         Args:
             file_path: Path to the file to sync
             max_attempts: Maximum number of retry attempts
@@ -1054,15 +1083,20 @@ class ObsidianSync:
             lambda: self.sync_single_file(file_path),
             max_attempts=max_attempts,
             initial_delay=0.5,
-            retryable_exceptions=(ConnectionError, TimeoutError, PermissionError, OSError),
+            retryable_exceptions=(
+                ConnectionError,
+                TimeoutError,
+                PermissionError,
+                OSError,
+            ),
         )
-    
+
     def _is_transient_error(self, error: Exception) -> bool:
         """Check if an error is transient (temporary).
-        
+
         Args:
             error: Exception to check
-        
+
         Returns:
             True if error is transient, False otherwise
         """
@@ -1074,15 +1108,15 @@ class ObsidianSync:
             ConnectionAbortedError,
             OSError,  # Network unreachable, etc.
         )
-        
+
         return isinstance(error, transient_types)
-    
+
     def _is_retryable_error(self, error: Exception) -> bool:
         """Check if an error is retryable.
-        
+
         Args:
             error: Exception to check
-        
+
         Returns:
             True if error is retryable, False otherwise
         """
@@ -1093,31 +1127,31 @@ class ObsidianSync:
             BlockingIOError,
             OSError,
         )
-        
+
         # Check specific OSError codes
         if isinstance(error, OSError):
             # Windows file lock error code
-            if hasattr(error, 'winerror') and error.winerror == 32:
+            if hasattr(error, "winerror") and error.winerror == 32:
                 return True
             # Unix EACCES (13) or EAGAIN (11)
-            if hasattr(error, 'errno') and error.errno in (13, 11):
+            if hasattr(error, "errno") and error.errno in (13, 11):
                 return True
-        
+
         return isinstance(error, retryable_types)
-    
+
     def _is_critical_error(self, error: Exception) -> bool:
         """Check if an error is critical and should trigger rollback.
-        
+
         Args:
             error: Exception to check
-        
+
         Returns:
             True if error is critical, False otherwise
         """
         # Transient errors are not critical
         if self._is_transient_error(error):
             return False
-        
+
         # Critical error types
         critical_types = (
             RuntimeError,
@@ -1125,12 +1159,12 @@ class ObsidianSync:
             MemoryError,
             KeyboardInterrupt,
         )
-        
+
         return isinstance(error, critical_types)
-    
+
     def _record_error(self, error: Exception, transient: bool = False) -> None:
         """Record an error in the error history.
-        
+
         Args:
             error: Exception that occurred
             transient: Whether the error is transient
@@ -1141,26 +1175,26 @@ class ObsidianSync:
             "message": str(error),
             "transient": transient,
         }
-        
+
         self._error_history.append(error_entry)
         self._error_count += 1
         self._last_error_time = time.time()
-        
+
         # Trim history to last 100 errors
         if len(self._error_history) > 100:
             self._error_history = self._error_history[-100:]
-    
+
     def get_error_history(self) -> List[Dict[str, Any]]:
         """Get the error history.
-        
+
         Returns:
             List of error dictionaries
         """
         return self._error_history.copy()
-    
+
     def clear_error_history(self) -> int:
         """Clear the error history.
-        
+
         Returns:
             Number of errors cleared
         """

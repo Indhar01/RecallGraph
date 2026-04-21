@@ -3,14 +3,13 @@
 import asyncio
 import pytest
 from datetime import datetime, timezone, timedelta
-from unittest.mock import Mock, AsyncMock, patch
+from unittest.mock import patch
 
 from memograph.core.kernel import MemoryKernel
 from memograph.core.enums import MemoryType
 from memograph.mcp.conversation_monitor import (
     ConversationMonitor,
     ConversationExchange,
-    ToolCallRecord,
 )
 
 

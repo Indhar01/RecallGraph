@@ -1,12 +1,9 @@
-
 """Tests for Obsidian-MemoGraph batch sync operations."""
 
 import pytest
-from pathlib import Path
-from unittest.mock import Mock, AsyncMock
 import asyncio
 
-from memograph.integrations.obsidian.sync import ObsidianSync, BatchSyncCancelled
+from memograph.integrations.obsidian.sync import ObsidianSync
 from memograph.integrations.obsidian.conflict_resolver import ConflictStrategy
 
 
@@ -39,6 +36,7 @@ def obsidian_sync(temp_obsidian_vault, temp_memograph_vault):
 @pytest.fixture
 def create_test_notes(temp_obsidian_vault):
     """Factory fixture to create multiple test notes."""
+
     def _create_notes(count: int):
         notes = []
         for i in range(count):
@@ -54,6 +52,7 @@ It contains some [[wikilinks]] and #hashtags.
             note_path.write_text(content, encoding="utf-8")
             notes.append(note_path)
         return notes
+
     return _create_notes
 
 
@@ -196,12 +195,14 @@ class TestProgressTracking:
         progress_calls = []
 
         def progress_callback(current, total, file_path, status):
-            progress_calls.append({
-                "current": current,
-                "total": total,
-                "file": file_path,
-                "status": status,
-            })
+            progress_calls.append(
+                {
+                    "current": current,
+                    "total": total,
+                    "file": file_path,
+                    "status": status,
+                }
+            )
 
         stats = await obsidian_sync.batch_sync(
             direction="pull",
@@ -227,12 +228,14 @@ class TestProgressTracking:
         progress_calls = []
 
         def progress_callback(current, total, file_path, status):
-            progress_calls.append({
-                "current": current,
-                "total": total,
-                "file": file_path,
-                "status": status,
-            })
+            progress_calls.append(
+                {
+                    "current": current,
+                    "total": total,
+                    "file": file_path,
+                    "status": status,
+                }
+            )
 
         await obsidian_sync.batch_sync(
             direction="pull",
@@ -391,7 +394,10 @@ class TestErrorHandling:
         assert stats["pulled"] >= 4
         # Should have recorded the error
         assert len(stats["errors"]) > 0
-        assert any("note_002" in error or "PermissionError" in error for error in stats["errors"])
+        assert any(
+            "note_002" in error or "PermissionError" in error
+            for error in stats["errors"]
+        )
 
 
 class TestBatchSyncDirections:
@@ -435,9 +441,7 @@ class TestBatchSyncFileSelection:
     """Test batch sync with specific file selection."""
 
     @pytest.mark.asyncio
-    async def test_batch_sync_specific_files(
-        self, obsidian_sync, create_test_notes
-    ):
+    async def test_batch_sync_specific_files(self, obsidian_sync, create_test_notes):
         """Test batch sync with specific file list."""
         notes = create_test_notes(20)
 
@@ -499,9 +503,7 @@ class TestBatchSyncStateTracking:
         assert stats2["pulled"] == 0  # All files unchanged
 
     @pytest.mark.asyncio
-    async def test_batch_sync_detects_changes(
-        self, obsidian_sync, create_test_notes
-    ):
+    async def test_batch_sync_detects_changes(self, obsidian_sync, create_test_notes):
         """Test that batch sync detects changed files."""
         notes = create_test_notes(5)
 
@@ -539,9 +541,7 @@ class TestBatchSyncPerformance:
         assert elapsed < 30
 
     @pytest.mark.asyncio
-    async def test_batch_sync_memory_efficient(
-        self, obsidian_sync, create_test_notes
-    ):
+    async def test_batch_sync_memory_efficient(self, obsidian_sync, create_test_notes):
         """Test that batch sync doesn't load all files into memory at once."""
         # Create many files
         create_test_notes(100)
@@ -576,7 +576,8 @@ class TestBatchSyncConflicts:
 
         # Modify in Obsidian
         note_path.write_text(
-            "---\ntitle: Modified in Obsidian\n---\n\nObsidian content", encoding="utf-8"
+            "---\ntitle: Modified in Obsidian\n---\n\nObsidian content",
+            encoding="utf-8",
         )
 
         # Modify in MemoGraph (by creating a memory with same path)

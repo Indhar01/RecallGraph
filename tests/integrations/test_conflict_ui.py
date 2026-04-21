@@ -1,6 +1,5 @@
 """Tests for conflict resolution UI integration."""
 
-import pytest
 from memograph.integrations.obsidian.conflict_resolver import (
     ConflictResolver,
     ConflictStrategy,

@@ -12,11 +12,11 @@
 
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { 
-  AlertTriangle, 
-  Filter, 
-  Sparkles, 
-  TrendingUp, 
+import {
+  AlertTriangle,
+  Filter,
+  Sparkles,
+  TrendingUp,
   FileQuestion,
   FileX,
   Link2Off,
@@ -108,7 +108,7 @@ export default function GapDetector({
   };
 
   // Filter gaps by selected type
-  const filteredGaps = data?.gaps.filter(gap => 
+  const filteredGaps = data?.gaps.filter(gap =>
     selectedFilter === 'all' || gap.gap_type === selectedFilter
   ) || [];
 
@@ -276,7 +276,7 @@ export default function GapDetector({
 
             {filteredGaps.map((gap, index) => {
               const Icon = getGapIcon(gap.gap_type);
-              
+
               return (
                 <div
                   key={index}

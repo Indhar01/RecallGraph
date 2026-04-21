@@ -16,17 +16,12 @@ import json
 import logging
 import os
 import sys
-from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
 from mcp.types import (
-    GetPromptResult,
-    Prompt,
-    PromptArgument,
-    PromptMessage,
     Resource,
     ResourceTemplate,
     TextContent,
@@ -564,7 +559,7 @@ async def run_server(vault_path: str, llm_provider: str, llm_model: str | None):
 
     @server.get_prompt()
     async def get_prompt_handler(name: str, arguments: dict | None = None):
-        raise ValueError(f"Prompts not implemented in enhanced version")
+        raise ValueError("Prompts not implemented in enhanced version")
 
     # Run stdio server
     async with stdio_server() as (read_stream, write_stream):

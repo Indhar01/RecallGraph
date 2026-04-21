@@ -411,8 +411,8 @@ class ConversationMonitor:
             Formatted markdown content
         """
         lines = ["# Auto-Detected Conversation\n\n"]
-        lines.append(f"**Saved By:** Layer 2 (Server Monitor)\n")
-        lines.append(f"**Layer 1 Status:** Not saved by AI\n")
+        lines.append("**Saved By:** Layer 2 (Server Monitor)\n")
+        lines.append("**Layer 1 Status:** Not saved by AI\n")
         lines.append(f"**Detection Confidence:** {exchange.confidence:.0%}\n")
         lines.append(f"**Detection Pattern:** {' → '.join(exchange.tool_sequence)}\n")
         lines.append(f"**Timestamp:** {exchange.timestamp.isoformat()}\n\n")

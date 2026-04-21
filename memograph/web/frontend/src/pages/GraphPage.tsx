@@ -245,7 +245,7 @@ export default function GraphPage() {
       ctx.font = `${fontSize}px Sans-Serif`
       ctx.textAlign = 'center'
       ctx.textBaseline = 'middle'
-      
+
       // Draw label background
       const textWidth = ctx.measureText(label).width
       const padding = 4 / globalScale
@@ -256,7 +256,7 @@ export default function GraphPage() {
         textWidth + padding * 2,
         fontSize + padding * 2
       )
-      
+
       // Draw label text
       ctx.fillStyle = '#ffffff'
       ctx.fillText(label, node.x!, node.y! - nodeSize - fontSize)
@@ -452,7 +452,7 @@ export default function GraphPage() {
           </div>
           <div>
             <div className="text-2xl font-bold text-gray-900">
-              {graphData.links.length > 0 
+              {graphData.links.length > 0
                 ? (graphData.links.length / graphData.nodes.length).toFixed(1)
                 : '0'}
             </div>

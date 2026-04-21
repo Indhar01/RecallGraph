@@ -163,6 +163,7 @@ class ErrorResponse(BaseModel):
 
 # AI Features Models
 
+
 class TagSuggestionRequest(BaseModel):
     """Request model for tag suggestions."""
 

@@ -1,15 +1,12 @@
 """Tests for Obsidian-MemoGraph bidirectional sync."""
 
 import pytest
-from pathlib import Path
 from datetime import datetime
-from unittest.mock import Mock, patch, MagicMock, AsyncMock
-import asyncio
+from unittest.mock import Mock
 
 from memograph.integrations.obsidian.sync import ObsidianSync
 from memograph.integrations.obsidian.conflict_resolver import ConflictStrategy
 from memograph.core.enums import MemoryType
-from memograph.core.node import MemoryNode
 
 
 @pytest.fixture

@@ -77,7 +77,7 @@ def run_diagnostics(vault_path: str = "./vault"):
 
     try:
         stats = kernel.ingest()
-        print(f"✅ Ingest completed")
+        print("✅ Ingest completed")
         print(f"   • Indexed: {stats['indexed']} (new or changed files)")
         print(f"   • Skipped: {stats['skipped']} (unchanged files from cache)")
         print(f"   • Total: {stats['total']} (total memories in graph)")
@@ -173,7 +173,7 @@ def run_diagnostics(vault_path: str = "./vault"):
             status = "⚠️ " if cache_file == ".memograph_embeddings.json" else "ℹ️ "
             print(f"{status} {cache_file} - NOT FOUND")
             if cache_file == ".memograph_embeddings.json" and not has_embeddings:
-                print(f"   (Expected - no embedding adapter configured)")
+                print("   (Expected - no embedding adapter configured)")
     print()
 
     # Final summary

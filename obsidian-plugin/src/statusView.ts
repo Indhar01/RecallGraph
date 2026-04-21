@@ -212,10 +212,10 @@ export class StatusView extends ItemView {
         // Status badge
         const statusRow = section.createDiv({ cls: 'status-row' });
         statusRow.createSpan({ cls: 'status-label', text: 'Status:' });
-        
+
         let badgeText = 'Idle';
         let badgeClass = 'idle';
-        
+
         if (isSyncing) {
             badgeText = 'Syncing';
             badgeClass = 'syncing';
@@ -223,8 +223,8 @@ export class StatusView extends ItemView {
             badgeText = `${queueStatus.queued} Queued`;
             badgeClass = 'idle';
         }
-        
-        const badge = statusRow.createSpan({ 
+
+        const badge = statusRow.createSpan({
             cls: `status-badge ${badgeClass}`,
             text: badgeText
         });
@@ -233,7 +233,7 @@ export class StatusView extends ItemView {
         if (queueStatus.queued > 0) {
             const queueRow = section.createDiv({ cls: 'status-row' });
             queueRow.createSpan({ cls: 'status-label', text: 'Queued Files:' });
-            queueRow.createSpan({ 
+            queueRow.createSpan({
                 cls: 'status-value',
                 text: queueStatus.queued.toString()
             });
@@ -245,13 +245,13 @@ export class StatusView extends ItemView {
                 filesDiv.createSpan({ cls: 'status-label', text: 'Files:' });
                 const fileNames = filesDiv.createDiv({ cls: 'status-value' });
                 fileList.forEach(file => {
-                    fileNames.createEl('div', { 
+                    fileNames.createEl('div', {
                         text: `• ${file.split('/').pop()}`,
                         cls: 'file-name'
                     });
                 });
                 if (queueStatus.queued > 5) {
-                    fileNames.createEl('div', { 
+                    fileNames.createEl('div', {
                         text: `... and ${queueStatus.queued - 5} more`,
                         cls: 'file-name'
                     });
@@ -274,11 +274,11 @@ export class StatusView extends ItemView {
     private formatTimestamp(timestamp: number): string {
         const now = Date.now();
         const diff = now - timestamp;
-        
+
         if (diff < 60000) return 'Just now';
         if (diff < 3600000) return `${Math.floor(diff / 60000)} minutes ago`;
         if (diff < 86400000) return `${Math.floor(diff / 3600000)} hours ago`;
-        
+
         return new Date(timestamp).toLocaleString();
     }
 
@@ -299,8 +299,8 @@ export class StatusView extends ItemView {
             { label: 'Files Pushed', value: stats.filesPushed.toString() },
             { label: 'Conflicts Resolved', value: stats.conflictsResolved.toString() },
             { label: 'Total Errors', value: stats.totalErrors.toString() },
-            { 
-                label: 'Avg. Duration', 
+            {
+                label: 'Avg. Duration',
                 value: this.statsManager.formatDuration(stats.averageSyncDuration)
             },
             {
@@ -332,7 +332,7 @@ export class StatusView extends ItemView {
         const history = this.statsManager.getHistory(10);
 
         if (history.length === 0) {
-            section.createDiv({ 
+            section.createDiv({
                 cls: 'status-value',
                 text: 'No sync history available'
             });
@@ -341,15 +341,15 @@ export class StatusView extends ItemView {
 
         history.forEach(entry => {
             const entryDiv = section.createDiv({ cls: 'history-entry' });
-            
+
             const timestampDiv = entryDiv.createDiv({ cls: 'history-timestamp' });
             timestampDiv.setText(new Date(entry.timestamp).toLocaleString());
-            
-            const statusBadge = entryDiv.createSpan({ 
+
+            const statusBadge = entryDiv.createSpan({
                 cls: `status-badge ${entry.status === 'success' ? 'success' : 'error'}`,
                 text: entry.status.toUpperCase()
             });
-            
+
             const detailsDiv = entryDiv.createDiv();
             detailsDiv.setText(
                 `${entry.direction.toUpperCase()} - ` +
@@ -357,7 +357,7 @@ export class StatusView extends ItemView {
                 `⚠${entry.conflicts} conflicts ` +
                 `(${this.statsManager.formatDuration(entry.duration)})`
             );
-            
+
             if (entry.errors.length > 0) {
                 const errorsDiv = entryDiv.createDiv({ cls: 'error-entry' });
                 errorsDiv.setText(`Errors: ${entry.errors.length}`);
@@ -367,7 +367,7 @@ export class StatusView extends ItemView {
 
     private renderErrors(): void {
         const recentErrors = this.statsManager.getRecentErrors(5);
-        
+
         if (recentErrors.length === 0) return;
 
         const section = this.container!.createDiv({ cls: 'status-section' });
@@ -386,7 +386,7 @@ export class StatusView extends ItemView {
         const buttonsDiv = section.createDiv({ cls: 'action-buttons' });
 
         // Refresh button
-        const refreshBtn = buttonsDiv.createEl('button', { 
+        const refreshBtn = buttonsDiv.createEl('button', {
             cls: 'action-button',
             text: 'Refresh'
         });
@@ -396,7 +396,7 @@ export class StatusView extends ItemView {
         });
 
         // Clear history button
-        const clearHistoryBtn = buttonsDiv.createEl('button', { 
+        const clearHistoryBtn = buttonsDiv.createEl('button', {
             cls: 'action-button secondary',
             text: 'Clear History'
         });
@@ -407,7 +407,7 @@ export class StatusView extends ItemView {
         });
 
         // Reset statistics button
-        const resetStatsBtn = buttonsDiv.createEl('button', { 
+        const resetStatsBtn = buttonsDiv.createEl('button', {
             cls: 'action-button secondary',
             text: 'Reset Statistics'
         });

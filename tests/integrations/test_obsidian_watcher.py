@@ -3,7 +3,6 @@
 import pytest
 import asyncio
 import time
-from pathlib import Path
 from unittest.mock import MagicMock, AsyncMock
 from memograph.integrations.obsidian.watcher import ObsidianWatcher
 

@@ -48,7 +48,7 @@ export class SyncManager {
         this.batchSyncing = false;
         this.batchCancelled = false;
         this.errorHistory = [];
-        
+
         // Initialize diff view styles
         DiffView.addStyles();
     }
@@ -109,7 +109,7 @@ export class SyncManager {
                 }
 
                 const batch = filteredFiles.slice(i, Math.min(i + batchSize, totalFiles));
-                
+
                 // Process batch based on direction
                 if (direction === 'pull' || direction === 'bidirectional') {
                     // For pull, we'd call the backend API
@@ -169,14 +169,14 @@ export class SyncManager {
     async batchSyncWithProgress(): Promise<SyncStats> {
         // Create a notice that we'll update with progress
         let progressNotice: Notice | null = null;
-        
+
         const stats = await this.batchSync({
             batchSize: 50,
             direction: 'bidirectional',
             onProgress: (current, total, file, status) => {
                 const percentage = Math.round((current / total) * 100);
                 const message = `Syncing ${current}/${total} (${percentage}%) - ${status}: ${file}`;
-                
+
                 if (progressNotice) {
                     // Update existing notice
                     progressNotice.setMessage(message);
@@ -279,24 +279,24 @@ export class SyncManager {
 
     async syncFileDebounced(file: TFile): Promise<void> {
         const filePath = file.path;
-        
+
         // Cancel existing debounce timer for this file
         if (this.debounceTimers.has(filePath)) {
             clearTimeout(this.debounceTimers.get(filePath)!);
         }
-        
+
         // Set new debounce timer
         const timer = setTimeout(async () => {
             this.debounceTimers.delete(filePath);
             this.syncQueue.delete(filePath);
-            
+
             try {
                 await this.syncFile(file);
             } catch (error) {
                 new Notice(`Failed to sync ${file.basename}: ${error}`);
             }
         }, this.settings.debounceDelay);
-        
+
         this.debounceTimers.set(filePath, timer);
         this.syncQueue.add(filePath);
     }
@@ -411,17 +411,17 @@ export class SyncManager {
     async saveMemoryToVault(memory: any): Promise<void> {
         // Extract path from metadata or generate one
         const filePath = memory.metadata?.path || `${memory.title || memory.id}.md`;
-        
+
         // Check if file already exists
         const existingFile = this.app.vault.getAbstractFileByPath(filePath);
-        
+
         // Convert memory to markdown format with frontmatter
         const markdownContent = this.memoryToMarkdown(memory);
 
         if (existingFile instanceof TFile) {
             // File exists - check for conflicts
             const currentContent = await this.app.vault.read(existingFile);
-            
+
             if (currentContent !== markdownContent) {
                 // Conflict detected
                 const resolvedContent = await this.handleConflict(
@@ -431,7 +431,7 @@ export class SyncManager {
                     existingFile.stat.mtime,
                     memory.metadata?.modified || Date.now()
                 );
-                
+
                 if (resolvedContent !== null) {
                     await this.app.vault.modify(existingFile, resolvedContent);
                 }
@@ -443,7 +443,7 @@ export class SyncManager {
             if (parentPath && !this.app.vault.getAbstractFileByPath(parentPath)) {
                 await this.createFolderPath(parentPath);
             }
-            
+
             await this.app.vault.create(filePath, markdownContent);
         }
     }
@@ -601,11 +601,11 @@ ${remoteContent}
     async createFolderPath(path: string): Promise<void> {
         const parts = path.split('/');
         let currentPath = '';
-        
+
         for (const part of parts) {
             currentPath = currentPath ? `${currentPath}/${part}` : part;
             const folder = this.app.vault.getAbstractFileByPath(currentPath);
-            
+
             if (!folder) {
                 await this.app.vault.createFolder(currentPath);
             }
@@ -679,15 +679,15 @@ ${remoteContent}
                 return await operation();
             } catch (error) {
                 lastError = error as Error;
-                
+
                 // Record error
                 this.recordError(lastError, attempt < maxAttempts);
-                
+
                 // Check if error is retryable
                 if (!this.isRetryableError(lastError)) {
                     throw lastError;
                 }
-                
+
                 // Don't wait after the last attempt
                 if (attempt < maxAttempts) {
                     await this.sleep(delay);
@@ -707,7 +707,7 @@ ${remoteContent}
      */
     private isRetryableError(error: Error): boolean {
         const message = error.message.toLowerCase();
-        
+
         // Network errors
         if (message.includes('network') ||
             message.includes('timeout') ||
@@ -716,14 +716,14 @@ ${remoteContent}
             message.includes('enotfound')) {
             return true;
         }
-        
+
         // HTTP status codes that are retryable
         if (message.includes('503') || // Service Unavailable
             message.includes('504') || // Gateway Timeout
             message.includes('429')) { // Too Many Requests
             return true;
         }
-        
+
         return false;
     }
 
@@ -747,14 +747,14 @@ ${remoteContent}
             type: error.name,
             willRetry
         };
-        
+
         this.errorHistory.push(errorEntry);
-        
+
         // Keep only last 100 errors
         if (this.errorHistory.length > 100) {
             this.errorHistory = this.errorHistory.slice(-100);
         }
-        
+
         // Log to console for debugging
         if (willRetry) {
             console.warn(`Sync error (will retry): ${error.message}`);

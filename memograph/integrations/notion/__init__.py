@@ -6,10 +6,10 @@ synchronization of pages, blocks, properties, and databases.
 Example:
     ```python
     from memograph.integrations.notion import NotionIntegration
-    
+
     # Initialize integration
     integration = NotionIntegration(auth_token="secret_...")
-    
+
     # Sync data
     result = await integration.sync(direction="pull")
     print(f"Pulled {result['pages_pulled']} pages")

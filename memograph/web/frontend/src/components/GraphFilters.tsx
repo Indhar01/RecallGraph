@@ -193,7 +193,7 @@ export default function GraphFilters({
             <label className="block text-sm font-medium text-gray-700 mb-2">
               Tags {isLoadingTags && <span className="text-xs text-gray-500">(loading...)</span>}
             </label>
-            
+
             {/* Selected Tags */}
             {filters.tags.length > 0 && (
               <div className="flex flex-wrap gap-2 mb-2">

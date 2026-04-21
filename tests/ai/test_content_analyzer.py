@@ -1,5 +1,4 @@
 import pytest
-import numpy as np
 from memograph.ai.content_analyzer import ContentAnalyzer
 from memograph import MemoryKernel
 
@@ -13,7 +12,10 @@ def analyzer(tmp_path):
 @pytest.fixture
 def analyzer_with_embeddings(tmp_path):
     """Analyzer with embedding adapter configured."""
-    from memograph.adapters.embeddings.sentence_transformers import SentenceTransformerEmbeddings
+    from memograph.adapters.embeddings.sentence_transformers import (
+        SentenceTransformerEmbeddings,
+    )
+
     kernel = MemoryKernel(str(tmp_path / "test_vault"))
     kernel.embedding_adapter = SentenceTransformerEmbeddings()
     return ContentAnalyzer(kernel)
@@ -23,12 +25,13 @@ def analyzer_with_embeddings(tmp_path):
 # extract_keywords tests
 # ============================================================================
 
+
 def test_extract_keywords_basic(analyzer):
     """Test basic keyword extraction with frequency analysis."""
     content = "Python is great. Python is versatile. Python programming."
     keywords = analyzer.extract_keywords(content, max_keywords=5)
     assert len(keywords) > 0
-    assert keywords[0][0] == 'python'
+    assert keywords[0][0] == "python"
     assert keywords[0][1] >= 2  # 'python' appears multiple times
 
 
@@ -44,12 +47,14 @@ def test_extract_keywords_min_frequency(analyzer):
     content = "python java python javascript python ruby"
     keywords = analyzer.extract_keywords(content, max_keywords=10, min_frequency=2)
     assert len(keywords) == 1  # Only 'python' appears >= 2 times
-    assert keywords[0][0] == 'python'
+    assert keywords[0][0] == "python"
 
 
 def test_extract_keywords_max_keywords(analyzer):
     """Test max_keywords parameter limits results."""
-    content = " ".join([f"word{i}" for i in range(20)] * 2)  # 20 unique words, each appears twice
+    content = " ".join(
+        [f"word{i}" for i in range(20)] * 2
+    )  # 20 unique words, each appears twice
     keywords = analyzer.extract_keywords(content, max_keywords=5, min_frequency=2)
     assert len(keywords) <= 5
 
@@ -72,12 +77,13 @@ def test_extract_keywords_filters_short_words(analyzer):
 # extract_existing_tags tests
 # ============================================================================
 
+
 def test_extract_existing_tags_basic(analyzer):
     """Test basic hashtag extraction."""
     content = "Note about #python and #ai"
     tags = analyzer.extract_existing_tags(content)
-    assert 'python' in tags
-    assert 'ai' in tags
+    assert "python" in tags
+    assert "ai" in tags
     assert len(tags) == 2
 
 
@@ -86,7 +92,7 @@ def test_extract_existing_tags_multiple(analyzer):
     content = "#tag1 #tag2 #tag3 #tag4"
     tags = analyzer.extract_existing_tags(content)
     assert len(tags) == 4
-    assert all(f'tag{i}' in tags for i in range(1, 5))
+    assert all(f"tag{i}" in tags for i in range(1, 5))
 
 
 def test_extract_existing_tags_no_tags(analyzer):
@@ -105,59 +111,60 @@ def test_extract_existing_tags_mixed_content(analyzer):
     Code: print('hello') #code
     """
     tags = analyzer.extract_existing_tags(content)
-    assert 'python' in tags
-    assert 'ai' in tags
-    assert 'code' in tags
+    assert "python" in tags
+    assert "ai" in tags
+    assert "code" in tags
 
 
 # ============================================================================
 # analyze_structure tests
 # ============================================================================
 
+
 def test_analyze_structure_headings(analyzer):
     """Test heading count detection."""
     content = "# H1\n## H2\n### H3\n#### H4"
     structure = analyzer.analyze_structure(content)
-    assert structure['heading_count'] == 4
+    assert structure["heading_count"] == 4
 
 
 def test_analyze_structure_lists(analyzer):
     """Test list count detection."""
     content = "- item1\n- item2\n* item3\n+ item4"
     structure = analyzer.analyze_structure(content)
-    assert structure['list_count'] == 4
+    assert structure["list_count"] == 4
 
 
 def test_analyze_structure_code_blocks(analyzer):
     """Test code block detection."""
     content = "```python\ncode1\n```\n```js\ncode2\n```"
     structure = analyzer.analyze_structure(content)
-    assert structure['code_block_count'] == 2
+    assert structure["code_block_count"] == 2
 
 
 def test_analyze_structure_links(analyzer):
     """Test wikilink detection."""
     content = "[[link1]] and [[link2]] and [[link3]]"
     structure = analyzer.analyze_structure(content)
-    assert structure['link_count'] == 3
+    assert structure["link_count"] == 3
 
 
 def test_analyze_structure_word_count(analyzer):
     """Test word count."""
     content = "one two three four five"
     structure = analyzer.analyze_structure(content)
-    assert structure['word_count'] == 5
+    assert structure["word_count"] == 5
 
 
 def test_analyze_structure_frontmatter(analyzer):
     """Test frontmatter detection."""
     content = "---\ntitle: Test\n---\nContent here"
     structure = analyzer.analyze_structure(content)
-    assert structure['has_frontmatter'] is True
-    
+    assert structure["has_frontmatter"] is True
+
     content_no_fm = "Content without frontmatter"
     structure = analyzer.analyze_structure(content_no_fm)
-    assert structure['has_frontmatter'] is False
+    assert structure["has_frontmatter"] is False
 
 
 def test_analyze_structure_comprehensive(analyzer):
@@ -183,87 +190,95 @@ def example():
 More text with [[wikilink3]].
 """
     structure = analyzer.analyze_structure(content)
-    assert structure['heading_count'] == 2
-    assert structure['list_count'] == 3
-    assert structure['code_block_count'] == 1
-    assert structure['link_count'] == 3
-    assert structure['word_count'] > 10
-    assert structure['has_frontmatter'] is True
+    assert structure["heading_count"] == 2
+    assert structure["list_count"] == 3
+    assert structure["code_block_count"] == 1
+    assert structure["link_count"] == 3
+    assert structure["word_count"] > 10
+    assert structure["has_frontmatter"] is True
 
 
 # ============================================================================
 # detect_content_type tests
 # ============================================================================
 
+
 def test_detect_content_type_code(analyzer):
     """Test detection of code-heavy content."""
     content = "\n".join([f"```python\ncode{i}\n```" for i in range(5)])
-    assert analyzer.detect_content_type(content) == 'code'
+    assert analyzer.detect_content_type(content) == "code"
 
 
 def test_detect_content_type_article(analyzer):
     """Test detection of article-type content."""
-    content = "# Heading\n" + "word " * 1001 + "\n## Heading2\n### Heading3\n#### Heading4"
-    assert analyzer.detect_content_type(content) == 'article'
+    content = (
+        "# Heading\n" + "word " * 1001 + "\n## Heading2\n### Heading3\n#### Heading4"
+    )
+    assert analyzer.detect_content_type(content) == "article"
 
 
 def test_detect_content_type_list(analyzer):
     """Test detection of list-heavy content."""
     content = "\n".join([f"- item {i}" for i in range(15)])
-    assert analyzer.detect_content_type(content) == 'list'
+    assert analyzer.detect_content_type(content) == "list"
 
 
 def test_detect_content_type_reference(analyzer):
     """Test detection of reference-type content."""
     content = "\n".join([f"[[link{i}]]" for i in range(10)])
-    assert analyzer.detect_content_type(content) == 'reference'
+    assert analyzer.detect_content_type(content) == "reference"
 
 
 def test_detect_content_type_note(analyzer):
     """Test detection of generic note content."""
     content = "Just a simple note with some text."
-    assert analyzer.detect_content_type(content) == 'note'
+    assert analyzer.detect_content_type(content) == "note"
 
 
 def test_detect_content_type_priority(analyzer):
     """Test that type detection follows priority order."""
     # Code type has highest priority (>3 code blocks)
-    content = "```\ncode1\n```\n```\ncode2\n```\n```\ncode3\n```\n```\ncode4\n```\n" + "word " * 1500
-    assert analyzer.detect_content_type(content) == 'code'
+    content = (
+        "```\ncode1\n```\n```\ncode2\n```\n```\ncode3\n```\n```\ncode4\n```\n"
+        + "word " * 1500
+    )
+    assert analyzer.detect_content_type(content) == "code"
 
 
 # ============================================================================
 # _clean_content tests
 # ============================================================================
 
+
 def test_clean_content_removes_code_blocks(analyzer):
     """Test that code blocks are removed during cleaning."""
     content = "text ```python\ncode here\n``` more text"
     cleaned = analyzer._clean_content(content)
-    assert 'code here' not in cleaned
-    assert 'text' in cleaned
-    assert 'more text' in cleaned
+    assert "code here" not in cleaned
+    assert "text" in cleaned
+    assert "more text" in cleaned
 
 
 def test_clean_content_removes_inline_code(analyzer):
     """Test that inline code is removed during cleaning."""
     content = "text `inline code` more text"
     cleaned = analyzer._clean_content(content)
-    assert 'inline code' not in cleaned
-    assert 'text' in cleaned
+    assert "inline code" not in cleaned
+    assert "text" in cleaned
 
 
 def test_clean_content_removes_urls(analyzer):
     """Test that URLs are removed during cleaning."""
     content = "text https://example.com more text"
     cleaned = analyzer._clean_content(content)
-    assert 'example.com' not in cleaned
-    assert 'text' in cleaned
+    assert "example.com" not in cleaned
+    assert "text" in cleaned
 
 
 # ============================================================================
 # get_semantic_keywords tests
 # ============================================================================
+
 
 @pytest.mark.asyncio
 async def test_get_semantic_keywords_no_adapter(analyzer):
@@ -288,7 +303,9 @@ async def test_get_semantic_keywords_with_adapter_no_tags(analyzer_with_embeddin
     assert isinstance(keywords[0][1], float)
 
 
-@pytest.mark.skip(reason="Requires async embedding adapter support (embed_async method)")
+@pytest.mark.skip(
+    reason="Requires async embedding adapter support (embed_async method)"
+)
 @pytest.mark.asyncio
 async def test_get_semantic_keywords_with_adapter_and_tags(analyzer_with_embeddings):
     """Test semantic keywords with adapter and existing tags in graph."""
@@ -296,10 +313,10 @@ async def test_get_semantic_keywords_with_adapter_and_tags(analyzer_with_embeddi
     analyzer_with_embeddings.kernel.remember(
         title="Python Programming Tutorial",
         content="A comprehensive guide to Python programming",
-        tags=['python', 'programming', 'tutorial']
+        tags=["python", "programming", "tutorial"],
     )
     analyzer_with_embeddings.kernel.ingest()
-    
+
     content = "Learning Python programming basics for beginners"
     keywords = await analyzer_with_embeddings.get_semantic_keywords(content, top_k=3)
     assert len(keywords) > 0
@@ -311,6 +328,7 @@ async def test_get_semantic_keywords_with_adapter_and_tags(analyzer_with_embeddi
 # ============================================================================
 # _cosine_similarity tests
 # ============================================================================
+
 
 def test_cosine_similarity_identical_vectors(analyzer):
     """Test cosine similarity of identical vectors is 1.0."""
@@ -356,6 +374,7 @@ def test_cosine_similarity_partial_similarity(analyzer):
 # Integration tests
 # ============================================================================
 
+
 def test_analyzer_workflow(analyzer):
     """Test complete analysis workflow."""
     content = """---
@@ -377,39 +396,39 @@ def hello():
 
 See also: [[advanced-python]] and [[python-best-practices]]
 """
-    
+
     # Extract keywords
     keywords = analyzer.extract_keywords(content, max_keywords=10)
     assert len(keywords) > 0
-    
+
     # Extract tags
     tags = analyzer.extract_existing_tags(content)
-    assert 'python' in tags
-    
+    assert "python" in tags
+
     # Analyze structure
     structure = analyzer.analyze_structure(content)
-    assert structure['heading_count'] == 2
-    assert structure['list_count'] == 3
-    assert structure['code_block_count'] == 1
-    assert structure['link_count'] == 2
-    assert structure['has_frontmatter'] is True
-    
+    assert structure["heading_count"] == 2
+    assert structure["list_count"] == 3
+    assert structure["code_block_count"] == 1
+    assert structure["link_count"] == 2
+    assert structure["has_frontmatter"] is True
+
     # Detect content type
     content_type = analyzer.detect_content_type(content)
-    assert content_type in ['code', 'article', 'list', 'reference', 'note']
+    assert content_type in ["code", "article", "list", "reference", "note"]
 
 
 def test_stop_words_are_loaded(analyzer):
     """Test that stop words are properly loaded."""
     assert len(analyzer._stop_words) > 0
-    assert 'the' in analyzer._stop_words
-    assert 'and' in analyzer._stop_words
+    assert "the" in analyzer._stop_words
+    assert "and" in analyzer._stop_words
 
 
 def test_tag_patterns_compiled(analyzer):
     """Test that regex patterns are compiled."""
-    assert 'hashtag' in analyzer._tag_patterns
-    assert 'code_block' in analyzer._tag_patterns
-    assert 'inline_code' in analyzer._tag_patterns
-    assert 'url' in analyzer._tag_patterns
-    assert 'wikilink' in analyzer._tag_patterns
+    assert "hashtag" in analyzer._tag_patterns
+    assert "code_block" in analyzer._tag_patterns
+    assert "inline_code" in analyzer._tag_patterns
+    assert "url" in analyzer._tag_patterns
+    assert "wikilink" in analyzer._tag_patterns

@@ -1,4 +1,3 @@
-
 """
 AI Features Endpoints for MemoGraph API
 
@@ -22,7 +21,6 @@ from ..errors import (
     ErrorCode,
     MemoGraphError,
     kernel_not_initialized_error,
-    validate_query,
 )
 from ..models import (
     FeedbackRequest,
@@ -259,7 +257,9 @@ async def detect_gaps(
     min_severity: float = Query(
         0.3, ge=0.0, le=1.0, description="Minimum severity threshold (0.0-1.0)"
     ),
-    max_gaps: int = Query(20, ge=1, le=100, description="Maximum number of gaps to return"),
+    max_gaps: int = Query(
+        20, ge=1, le=100, description="Maximum number of gaps to return"
+    ),
 ):
     """
     Detect knowledge gaps in the vault.

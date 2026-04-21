@@ -14,7 +14,7 @@ export class ConflictModal extends Modal {
     conflictData: ConflictData;
     onResolve: (resolution: ConflictResolution, mergedContent?: string) => void;
     diffViewEl: HTMLElement | null = null;
-    
+
     constructor(
         app: App,
         conflictData: ConflictData,
@@ -27,10 +27,10 @@ export class ConflictModal extends Modal {
 
     onOpen() {
         const { contentEl } = this;
-        
+
         contentEl.empty();
         contentEl.addClass('memograph-conflict-modal');
-        
+
         // Header
         contentEl.createEl('h2', { text: 'Sync Conflict Detected' });
         contentEl.createEl('p', {
@@ -53,7 +53,7 @@ export class ConflictModal extends Modal {
 
         // Action buttons
         const buttonContainer = contentEl.createDiv({ cls: 'conflict-button-container' });
-        
+
         // Keep Local button
         const keepLocalBtn = buttonContainer.createEl('button', {
             text: 'Keep Local Version',

@@ -1078,7 +1078,7 @@ class MemoGraphMCPServer:
         max_suggestions: int = 10,
     ) -> dict[str, Any]:
         """Suggest wikilinks for a note using semantic similarity and graph analysis.
-        
+
         Args:
             content: Note content to analyze
             title: Note title (optional)
@@ -1086,27 +1086,27 @@ class MemoGraphMCPServer:
             existing_links: Links already in the note (optional)
             min_confidence: Minimum confidence score (0.0-1.0)
             max_suggestions: Maximum number of suggestions
-        
+
         Returns:
             Dictionary with link suggestions
         """
         try:
             self._check_server_health()
             from ..ai.link_suggester import LinkSuggester
-            
+
             suggester = LinkSuggester(
                 self.kernel,
                 min_confidence=min_confidence,
                 max_suggestions=max_suggestions,
             )
-            
+
             suggestions = await suggester.suggest_links(
                 content=content,
                 title=title,
                 note_id=note_id,
                 existing_links=existing_links or [],
             )
-            
+
             formatted_suggestions = [
                 {
                     "target_title": s.target_title,
@@ -1118,7 +1118,7 @@ class MemoGraphMCPServer:
                 }
                 for s in suggestions
             ]
-            
+
             return self._add_vault_context(
                 {
                     "success": True,
@@ -1126,7 +1126,7 @@ class MemoGraphMCPServer:
                     "suggestions": formatted_suggestions,
                 }
             )
-        
+
         except Exception as e:
             logger.error(f"Error suggesting links: {e}")
             return self._add_vault_context(
@@ -1135,7 +1135,7 @@ class MemoGraphMCPServer:
                     "error": str(e),
                 }
             )
-    
+
     async def detect_knowledge_gaps(
         self,
         min_severity: float = 0.3,
@@ -1143,32 +1143,32 @@ class MemoGraphMCPServer:
         gap_types: list[str] | None = None,
     ) -> dict[str, Any]:
         """Detect knowledge gaps in the vault.
-        
+
         Args:
             min_severity: Minimum severity threshold (0.0-1.0)
             max_gaps: Maximum number of gaps to return
             gap_types: Specific gap types to detect (optional):
                       ['missing_topic', 'weak_coverage', 'isolated_note', 'missing_link']
-        
+
         Returns:
             Dictionary with detected gaps
         """
         try:
             self._check_server_health()
             from ..ai.gap_detector import GapDetector
-            
+
             detector = GapDetector(
                 self.kernel,
                 min_severity=min_severity,
                 max_gaps=max_gaps,
             )
-            
+
             gaps = await detector.detect_gaps()
-            
+
             # Filter by gap types if specified
             if gap_types:
                 gaps = [g for g in gaps if g.gap_type in gap_types]
-            
+
             formatted_gaps = [
                 {
                     "type": g.gap_type,
@@ -1180,7 +1180,7 @@ class MemoGraphMCPServer:
                 }
                 for g in gaps
             ]
-            
+
             return self._add_vault_context(
                 {
                     "success": True,
@@ -1190,13 +1190,20 @@ class MemoGraphMCPServer:
                         "total_gaps": len(formatted_gaps),
                         "by_type": {
                             gap_type: len([g for g in gaps if g.gap_type == gap_type])
-                            for gap_type in ["missing_topic", "weak_coverage", "isolated_note", "missing_link"]
+                            for gap_type in [
+                                "missing_topic",
+                                "weak_coverage",
+                                "isolated_note",
+                                "missing_link",
+                            ]
                         },
-                        "avg_severity": sum(g.severity for g in gaps) / len(gaps) if gaps else 0.0,
-                    }
+                        "avg_severity": sum(g.severity for g in gaps) / len(gaps)
+                        if gaps
+                        else 0.0,
+                    },
                 }
             )
-        
+
         except Exception as e:
             logger.error(f"Error detecting knowledge gaps: {e}")
             return self._add_vault_context(
@@ -1205,7 +1212,7 @@ class MemoGraphMCPServer:
                     "error": str(e),
                 }
             )
-    
+
     async def analyze_knowledge_base(
         self,
         include_gaps: bool = True,
@@ -1213,40 +1220,40 @@ class MemoGraphMCPServer:
         include_paths: bool = True,
     ) -> dict[str, Any]:
         """Perform comprehensive knowledge base analysis.
-        
+
         Args:
             include_gaps: Include gap detection
             include_clusters: Include topic clustering
             include_paths: Include learning path suggestions
-        
+
         Returns:
             Dictionary with comprehensive analysis
         """
         try:
             self._check_server_health()
             from ..ai.gap_detector import GapDetector
-            
+
             detector = GapDetector(self.kernel)
             analysis = await detector.analyze_knowledge_base()
-            
+
             # Filter based on requested components
             if not include_gaps:
-                analysis['gaps'] = []
-                analysis['summary']['total_gaps'] = 0
+                analysis["gaps"] = []
+                analysis["summary"]["total_gaps"] = 0
             if not include_clusters:
-                analysis['clusters'] = []
-                analysis['summary']['total_clusters'] = 0
+                analysis["clusters"] = []
+                analysis["summary"]["total_clusters"] = 0
             if not include_paths:
-                analysis['learning_paths'] = []
-                analysis['summary']['total_paths'] = 0
-            
+                analysis["learning_paths"] = []
+                analysis["summary"]["total_paths"] = 0
+
             return self._add_vault_context(
                 {
                     "success": True,
                     "analysis": analysis,
                 }
             )
-        
+
         except Exception as e:
             logger.error(f"Error analyzing knowledge base: {e}")
             return self._add_vault_context(
@@ -2415,7 +2422,12 @@ class MemoGraphMCPServer:
                             "type": "array",
                             "items": {
                                 "type": "string",
-                                "enum": ["missing_topic", "weak_coverage", "isolated_note", "missing_link"],
+                                "enum": [
+                                    "missing_topic",
+                                    "weak_coverage",
+                                    "isolated_note",
+                                    "missing_link",
+                                ],
                             },
                             "description": "Specific gap types to detect (optional). Options: missing_topic, weak_coverage, isolated_note, missing_link",
                         },

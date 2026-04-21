@@ -38,26 +38,26 @@ class ObsidianWatcher(FileSystemEventHandler):
             on_change: Callback function that takes (file_path, event_type) as arguments.
                       Can be sync or async.
             debounce_delay: Delay in seconds before triggering callback (default: 0.3s)
-        
+
         Raises:
             ValueError: If vault_path does not exist or is not a directory
         """
         # Convert to Path object and validate immediately
         vault_path_obj = Path(vault_path)
-        
+
         # Validate path exists and is a directory before storing
         if not vault_path_obj.exists():
             raise ValueError(f"Vault path does not exist: {vault_path}")
         if not vault_path_obj.is_dir():
             raise ValueError(f"Vault path is not a directory: {vault_path}")
-        
+
         # Store validated path
         self.vault_path = vault_path_obj
         self.on_change = on_change
         self.observer: Optional[Observer] = None
         self.loop: Optional[asyncio.AbstractEventLoop] = None
         self.debounce_delay = debounce_delay
-        
+
         # Debouncing state: file_path -> (last_event_time, event_type, timer_task)
         # timer_task can be asyncio.Task or threading.Timer depending on callback type
         self._pending_events: Dict[str, tuple[float, str, Any]] = {}
@@ -96,7 +96,7 @@ class ObsidianWatcher(FileSystemEventHandler):
             if timer_task is not None:
                 if isinstance(timer_task, threading.Timer):
                     timer_task.cancel()
-                elif hasattr(timer_task, 'cancel'):
+                elif hasattr(timer_task, "cancel"):
                     timer_task.cancel()
         self._pending_events.clear()
 
@@ -129,7 +129,7 @@ class ObsidianWatcher(FileSystemEventHandler):
         """
         # Check if callback is async - if not, we can call it synchronously without event loop
         is_async_callback = asyncio.iscoroutinefunction(self.on_change)
-        
+
         if is_async_callback:
             # Async callback requires event loop
             if not self.loop or not self.loop.is_running():
@@ -150,21 +150,22 @@ class ObsidianWatcher(FileSystemEventHandler):
 
             # Create async task for debounced callback
             task = asyncio.run_coroutine_threadsafe(
-                self._debounced_callback(event_path, event_type, current_time), self.loop
+                self._debounced_callback(event_path, event_type, current_time),
+                self.loop,
             )
-            
+
             # Update with the task reference
             self._pending_events[event_path] = (current_time, event_type, task)
         else:
             # Synchronous callback - execute directly with simple debouncing
             current_time = time.time()
-            
+
             # Cancel any existing pending timer for this file
             if event_path in self._pending_events:
                 _, _, existing_timer = self._pending_events[event_path]
                 if existing_timer is not None:
                     existing_timer.cancel()
-            
+
             # Schedule new debounced callback using threading.Timer
             def execute_sync_callback():
                 """Execute the synchronous callback after debounce delay."""
@@ -189,14 +190,16 @@ class ObsidianWatcher(FileSystemEventHandler):
                     # Clean up on error
                     if event_path in self._pending_events:
                         del self._pending_events[event_path]
-            
+
             timer = threading.Timer(self.debounce_delay, execute_sync_callback)
             timer.start()
-            
+
             # Store with timer reference
             self._pending_events[event_path] = (current_time, event_type, timer)
 
-    async def _debounced_callback(self, event_path: str, event_type: str, event_time: float):
+    async def _debounced_callback(
+        self, event_path: str, event_type: str, event_time: float
+    ):
         """Execute callback after debounce delay.
 
         Args:
@@ -216,14 +219,14 @@ class ObsidianWatcher(FileSystemEventHandler):
                     logger.debug(
                         f"Executing debounced {pending_type} callback for {event_path}"
                     )
-                    
+
                     # Check if callback is async
                     if asyncio.iscoroutinefunction(self.on_change):
                         await self.on_change(event_path, pending_type)
                     else:
                         # Call sync callback
                         self.on_change(event_path, pending_type)
-                    
+
                     # Remove from pending events
                     del self._pending_events[event_path]
                 else:

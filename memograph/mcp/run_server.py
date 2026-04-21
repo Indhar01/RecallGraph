@@ -97,7 +97,7 @@ async def handle_call_tool(name: str, arguments: dict[str, Any]) -> list[TextCon
 
                     # Only auto-save if we have meaningful search
                     if query and len(query) >= 10 and memories:
-                        logger.info(f"🤖 Auto-saving conversation after search_vault")
+                        logger.info("🤖 Auto-saving conversation after search_vault")
 
                         # Format memories as context
                         context = "\n\n".join(
@@ -127,7 +127,7 @@ async def handle_call_tool(name: str, arguments: dict[str, Any]) -> list[TextCon
                         )
 
                         if auto_save_result.get("saved"):
-                            logger.info(f"✅ Auto-save successful")
+                            logger.info("✅ Auto-save successful")
 
                 except Exception as e:
                     logger.error(f"❌ Auto-save error: {e}")
@@ -148,7 +148,7 @@ async def handle_call_tool(name: str, arguments: dict[str, Any]) -> list[TextCon
                     # Only auto-save if we have meaningful content
                     if question and len(question) >= 10:
                         logger.info(
-                            f"🤖 Auto-saving conversation after query_with_context"
+                            "🤖 Auto-saving conversation after query_with_context"
                         )
 
                         # Trigger auto_hook_response automatically
@@ -649,7 +649,7 @@ async def run_server(vault_path: str, llm_provider: str, llm_model: str | None):
                     content += f"## {i}. {node.title}\n"
                     content += f"**Saved**: {date}\n\n"
                     content += f"{preview}\n\n"
-                    content += f"---\n\n"
+                    content += "---\n\n"
 
             return GetPromptResult(
                 messages=[

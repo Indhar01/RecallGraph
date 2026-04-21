@@ -1,7 +1,7 @@
 # MemoGraph Sync - Obsidian Plugin
 
-**Version:** 0.2.0  
-**Last Updated:** 2026-04-11  
+**Version:** 0.2.0
+**Last Updated:** 2026-04-11
 **Status:** Production Ready
 
 Seamlessly synchronize your Obsidian vault with MemoGraph for AI-powered knowledge management, semantic search, and intelligent memory organization.
@@ -203,8 +203,8 @@ batch_size: 50           # Files per batch
 | 500 files | < 120s | < 10s | < 3s | < 500 MB |
 | 1000 files | < 300s | < 20s | < 5s | < 1 GB |
 
-**Throughput:** 3-12 files/second (varies by file complexity)  
-**Cache Hit Rate:** 95%+ in typical usage  
+**Throughput:** 3-12 files/second (varies by file complexity)
+**Cache Hit Rate:** 95%+ in typical usage
 **Speedup vs v0.1.0:** 2-5x faster overall
 
 See [Performance Benchmarks](../docs/PERFORMANCE_BENCHMARKS.md) for detailed analysis.
@@ -343,7 +343,7 @@ ln -s /path/to/obsidian-plugin \
 ```
 User Edit → Debounce (300ms) → Detect Changes → Batch Files
     → Sync to MemoGraph → Update State → Update UI
-    
+
 Conflict Detected → Show Modal → User Choice → Resolve
     → Log History → Continue Sync
 ```

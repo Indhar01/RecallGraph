@@ -1,7 +1,7 @@
 """Base class for all integrations with external systems."""
 
 from abc import ABC, abstractmethod
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any
 from datetime import datetime
 
 

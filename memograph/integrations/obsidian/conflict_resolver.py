@@ -131,7 +131,7 @@ class ConflictResolver:
             try:
                 ui_resolution = self.ui_callback(conflict_info)
                 resolved_strategy = ui_resolution.get("strategy", "newest_wins")
-                
+
                 conflict_info.resolved = True
                 conflict_info.resolution_strategy = resolved_strategy
 
@@ -147,10 +147,14 @@ class ConflictResolver:
                     if merged_content:
                         conflict_info.resolved_content = merged_content
                         return {**obsidian_version, "content": merged_content}
-                    return self.create_conflict_marker(obsidian_version, memograph_version)
+                    return self.create_conflict_marker(
+                        obsidian_version, memograph_version
+                    )
                 elif resolved_strategy == "manual":
                     # User wants to manually edit - create conflict markers
-                    return self.create_conflict_marker(obsidian_version, memograph_version)
+                    return self.create_conflict_marker(
+                        obsidian_version, memograph_version
+                    )
             except Exception as e:
                 # Fallback to automatic resolution if UI callback fails
                 print(f"UI callback failed: {e}. Falling back to automatic resolution.")

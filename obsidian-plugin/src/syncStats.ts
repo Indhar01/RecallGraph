@@ -79,7 +79,7 @@ export class SyncStatsManager {
     ): void {
         const endTime = Date.now();
         const duration = endTime - startTime;
-        const status: 'success' | 'failed' | 'cancelled' = 
+        const status: 'success' | 'failed' | 'cancelled' =
             cancelled ? 'cancelled' : (errors.length > 0 ? 'failed' : 'success');
 
         // Update statistics
@@ -98,8 +98,8 @@ export class SyncStatsManager {
         }
 
         // Update average sync duration
-        this.stats.averageSyncDuration = 
-            (this.stats.averageSyncDuration * (this.stats.totalSyncs - 1) + duration) / 
+        this.stats.averageSyncDuration =
+            (this.stats.averageSyncDuration * (this.stats.totalSyncs - 1) + duration) /
             this.stats.totalSyncs;
 
         // Store last sync details
@@ -123,9 +123,9 @@ export class SyncStatsManager {
             duration,
             status
         };
-        
+
         this.history.unshift(historyEntry);
-        
+
         // Trim history if needed
         if (this.history.length > this.maxHistorySize) {
             this.history = this.history.slice(0, this.maxHistorySize);

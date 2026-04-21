@@ -2,7 +2,6 @@
 
 import json
 import pytest
-from pathlib import Path
 from datetime import datetime
 from memograph.integrations.obsidian.sync_state import SyncState
 

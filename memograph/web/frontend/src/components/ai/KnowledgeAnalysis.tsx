@@ -12,10 +12,10 @@
 
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { 
-  Brain, 
-  Sparkles, 
-  TrendingUp, 
+import {
+  Brain,
+  Sparkles,
+  TrendingUp,
   BookOpen,
   Network,
   AlertTriangle,

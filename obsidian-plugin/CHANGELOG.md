@@ -143,7 +143,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `conflictModal.ts` - Conflict resolution UI
   - `diffView.ts` - Side-by-side diff component
   - `performance_metrics.py` - Performance tracking backend
-  
+
 - **Enhanced Components:**
   - `sync.ts` - Added retry logic, error handling, batch operations
   - `watcher.py` - Added debouncing, queue management

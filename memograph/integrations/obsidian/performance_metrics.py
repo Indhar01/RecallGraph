@@ -10,7 +10,7 @@ from contextlib import contextmanager
 @dataclass
 class OperationMetrics:
     """Metrics for a single operation."""
-    
+
     operation_name: str
     start_time: float
     end_time: Optional[float] = None
@@ -21,35 +21,41 @@ class OperationMetrics:
     cache_misses: int = 0
     errors: int = 0
     metadata: Dict[str, Any] = field(default_factory=dict)
-    
+
     def complete(self) -> None:
         """Mark operation as complete and calculate duration."""
         self.end_time = time.time()
         self.duration_ms = (self.end_time - self.start_time) * 1000
-    
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for serialization."""
         return {
             "operation": self.operation_name,
             "start_time": datetime.fromtimestamp(self.start_time).isoformat(),
-            "end_time": datetime.fromtimestamp(self.end_time).isoformat() if self.end_time else None,
+            "end_time": datetime.fromtimestamp(self.end_time).isoformat()
+            if self.end_time
+            else None,
             "duration_ms": self.duration_ms,
             "files_processed": self.files_processed,
             "bytes_processed": self.bytes_processed,
             "cache_hits": self.cache_hits,
             "cache_misses": self.cache_misses,
             "errors": self.errors,
-            "throughput_files_per_sec": self._calculate_throughput_files() if self.duration_ms else 0,
-            "throughput_mb_per_sec": self._calculate_throughput_mb() if self.duration_ms else 0,
+            "throughput_files_per_sec": self._calculate_throughput_files()
+            if self.duration_ms
+            else 0,
+            "throughput_mb_per_sec": self._calculate_throughput_mb()
+            if self.duration_ms
+            else 0,
             "metadata": self.metadata,
         }
-    
+
     def _calculate_throughput_files(self) -> float:
         """Calculate files processed per second."""
         if not self.duration_ms or self.duration_ms == 0:
             return 0.0
         return (self.files_processed / self.duration_ms) * 1000
-    
+
     def _calculate_throughput_mb(self) -> float:
         """Calculate MB processed per second."""
         if not self.duration_ms or self.duration_ms == 0:
@@ -60,21 +66,21 @@ class OperationMetrics:
 
 class PerformanceTracker:
     """Track performance metrics for sync operations."""
-    
+
     def __init__(self):
         """Initialize performance tracker."""
         self.operations: List[OperationMetrics] = []
         self.current_operation: Optional[OperationMetrics] = None
         self._operation_counts: Dict[str, int] = {}
-    
+
     @contextmanager
     def track_operation(self, operation_name: str, **metadata):
         """Context manager to track an operation.
-        
+
         Args:
             operation_name: Name of the operation
             **meta Additional metadata to store
-        
+
         Usage:
             with tracker.track_operation("sync_pull", direction="pull"):
                 # Do sync work
@@ -86,7 +92,7 @@ class PerformanceTracker:
             metadata=metadata,
         )
         self.current_operation = metrics
-        
+
         try:
             yield metrics
         except Exception as e:
@@ -97,50 +103,54 @@ class PerformanceTracker:
             metrics.complete()
             self.operations.append(metrics)
             self.current_operation = None
-            self._operation_counts[operation_name] = self._operation_counts.get(operation_name, 0) + 1
-    
+            self._operation_counts[operation_name] = (
+                self._operation_counts.get(operation_name, 0) + 1
+            )
+
     def record_file_processed(self, size_bytes: int = 0) -> None:
         """Record that a file was processed.
-        
+
         Args:
             size_bytes: Size of the file in bytes
         """
         if self.current_operation:
             self.current_operation.files_processed += 1
             self.current_operation.bytes_processed += size_bytes
-    
+
     def record_cache_hit(self) -> None:
         """Record a cache hit."""
         if self.current_operation:
             self.current_operation.cache_hits += 1
-    
+
     def record_cache_miss(self) -> None:
         """Record a cache miss."""
         if self.current_operation:
             self.current_operation.cache_misses += 1
-    
+
     def record_error(self) -> None:
         """Record an error."""
         if self.current_operation:
             self.current_operation.errors += 1
-    
+
     def get_recent_operations(self, count: int = 10) -> List[Dict[str, Any]]:
         """Get most recent operations.
-        
+
         Args:
             count: Number of recent operations to return
-        
+
         Returns:
             List of operation metrics as dictionaries
         """
         return [op.to_dict() for op in self.operations[-count:]]
-    
-    def get_operation_summary(self, operation_name: Optional[str] = None) -> Dict[str, Any]:
+
+    def get_operation_summary(
+        self, operation_name: Optional[str] = None
+    ) -> Dict[str, Any]:
         """Get summary statistics for operations.
-        
+
         Args:
             operation_name: Filter by operation name, or None for all
-        
+
         Returns:
             Dictionary with summary statistics
         """
@@ -148,7 +158,7 @@ class PerformanceTracker:
             ops = [op for op in self.operations if op.operation_name == operation_name]
         else:
             ops = self.operations
-        
+
         if not ops:
             return {
                 "operation_name": operation_name or "all",
@@ -160,9 +170,9 @@ class PerformanceTracker:
                 "min_duration_ms": 0,
                 "max_duration_ms": 0,
             }
-        
+
         durations = [op.duration_ms for op in ops if op.duration_ms]
-        
+
         return {
             "operation_name": operation_name or "all",
             "count": len(ops),
@@ -179,66 +189,72 @@ class PerformanceTracker:
             "avg_throughput_files_per_sec": self._calculate_avg_throughput_files(ops),
             "avg_throughput_mb_per_sec": self._calculate_avg_throughput_mb(ops),
         }
-    
+
     def _calculate_cache_hit_rate(self, operations: List[OperationMetrics]) -> float:
         """Calculate cache hit rate as percentage.
-        
+
         Args:
             operations: List of operations to analyze
-        
+
         Returns:
             Cache hit rate as percentage (0-100)
         """
         total_hits = sum(op.cache_hits for op in operations)
         total_misses = sum(op.cache_misses for op in operations)
         total_accesses = total_hits + total_misses
-        
+
         if total_accesses == 0:
             return 0.0
-        
+
         return (total_hits / total_accesses) * 100
-    
-    def _calculate_avg_throughput_files(self, operations: List[OperationMetrics]) -> float:
+
+    def _calculate_avg_throughput_files(
+        self, operations: List[OperationMetrics]
+    ) -> float:
         """Calculate average files per second throughput.
-        
+
         Args:
             operations: List of operations to analyze
-        
+
         Returns:
             Average files per second
         """
-        throughputs = [op._calculate_throughput_files() for op in operations if op.duration_ms]
+        throughputs = [
+            op._calculate_throughput_files() for op in operations if op.duration_ms
+        ]
         return sum(throughputs) / len(throughputs) if throughputs else 0.0
-    
+
     def _calculate_avg_throughput_mb(self, operations: List[OperationMetrics]) -> float:
         """Calculate average MB per second throughput.
-        
+
         Args:
             operations: List of operations to analyze
-        
+
         Returns:
             Average MB per second
         """
-        throughputs = [op._calculate_throughput_mb() for op in operations if op.duration_ms]
+        throughputs = [
+            op._calculate_throughput_mb() for op in operations if op.duration_ms
+        ]
         return sum(throughputs) / len(throughputs) if throughputs else 0.0
-    
+
     def get_all_operation_names(self) -> List[str]:
         """Get list of all operation names tracked.
-        
+
         Returns:
             List of unique operation names
         """
         return list(self._operation_counts.keys())
-    
+
     def clear(self) -> None:
         """Clear all tracked metrics."""
         self.operations.clear()
         self._operation_counts.clear()
         self.current_operation = None
-    
+
     def export_metrics(self) -> Dict[str, Any]:
         """Export all metrics for analysis.
-        
+
         Returns:
             Dictionary with complete metrics data
         """
@@ -260,7 +276,7 @@ _global_tracker: Optional[PerformanceTracker] = None
 
 def get_tracker() -> PerformanceTracker:
     """Get the global performance tracker instance.
-    
+
     Returns:
         Global PerformanceTracker instance
     """

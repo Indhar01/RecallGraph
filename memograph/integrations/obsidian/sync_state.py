@@ -9,7 +9,7 @@ from typing import Dict, Optional, List, Any
 
 class SyncState:
     """Track sync state between Obsidian and MemoGraph.
-    
+
     Uses SQLite for efficient indexing and querying of file metadata.
     Falls back to JSON for backwards compatibility.
     """
@@ -23,22 +23,22 @@ class SyncState:
         """
         self.state_file = Path(state_file)
         self.use_sqlite = use_sqlite
-        
+
         if use_sqlite:
             # Use SQLite database
-            self.db_path = self.state_file.with_suffix('.db')
+            self.db_path = self.state_file.with_suffix(".db")
             self._init_sqlite_db()
             self.state = None  # Not used with SQLite
         else:
             # Use JSON file (legacy)
             self.db_path = None
             self.state = self.load_state()
-    
+
     def _init_sqlite_db(self) -> None:
         """Initialize SQLite database schema."""
         conn = sqlite3.connect(str(self.db_path))
         cursor = conn.cursor()
-        
+
         # Create tables
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS sync_metadata (
@@ -46,7 +46,7 @@ class SyncState:
                 value TEXT NOT NULL
             )
         """)
-        
+
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS file_hashes (
                 file_path TEXT PRIMARY KEY,
@@ -56,17 +56,17 @@ class SyncState:
                 modified REAL
             )
         """)
-        
+
         cursor.execute("""
-            CREATE INDEX IF NOT EXISTS idx_file_timestamp 
+            CREATE INDEX IF NOT EXISTS idx_file_timestamp
             ON file_hashes(timestamp)
         """)
-        
+
         cursor.execute("""
-            CREATE INDEX IF NOT EXISTS idx_file_modified 
+            CREATE INDEX IF NOT EXISTS idx_file_modified
             ON file_hashes(modified)
         """)
-        
+
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS conflicts (
                 file_path TEXT NOT NULL,
@@ -74,15 +74,15 @@ class SyncState:
                 timestamp TEXT NOT NULL
             )
         """)
-        
+
         cursor.execute("""
-            CREATE INDEX IF NOT EXISTS idx_conflict_timestamp 
+            CREATE INDEX IF NOT EXISTS idx_conflict_timestamp
             ON conflicts(timestamp)
         """)
-        
+
         conn.commit()
         conn.close()
-    
+
     def _get_connection(self) -> sqlite3.Connection:
         """Get SQLite connection."""
         if not self.use_sqlite:
@@ -101,7 +101,7 @@ class SyncState:
         if self.use_sqlite:
             # Not used for SQLite mode
             return self._default_state()
-        
+
         if self.state_file.exists():
             try:
                 with open(self.state_file, "r", encoding="utf-8") as f:
@@ -128,7 +128,7 @@ class SyncState:
         if self.use_sqlite:
             # SQLite writes are immediate, no need to save
             return
-        
+
         # Ensure parent directory exists
         self.state_file.parent.mkdir(parents=True, exist_ok=True)
 
@@ -136,7 +136,9 @@ class SyncState:
         with open(self.state_file, "w", encoding="utf-8") as f:
             json.dump(self.state, f, indent=2, default=str)
 
-    def update_file_hash(self, file_path: str, hash_value: str, size: int = 0, modified: float = 0.0) -> None:
+    def update_file_hash(
+        self, file_path: str, hash_value: str, size: int = 0, modified: float = 0.0
+    ) -> None:
         """Update hash for a file.
 
         Args:
@@ -148,11 +150,14 @@ class SyncState:
         if self.use_sqlite:
             conn = self._get_connection()
             cursor = conn.cursor()
-            cursor.execute("""
-                INSERT OR REPLACE INTO file_hashes 
+            cursor.execute(
+                """
+                INSERT OR REPLACE INTO file_hashes
                 (file_path, hash, timestamp, size, modified)
                 VALUES (?, ?, ?, ?, ?)
-            """, (file_path, hash_value, datetime.now().isoformat(), size, modified))
+            """,
+                (file_path, hash_value, datetime.now().isoformat(), size, modified),
+            )
             conn.commit()
             conn.close()
         else:
@@ -176,7 +181,9 @@ class SyncState:
         if self.use_sqlite:
             conn = self._get_connection()
             cursor = conn.cursor()
-            cursor.execute("SELECT hash FROM file_hashes WHERE file_path = ?", (file_path,))
+            cursor.execute(
+                "SELECT hash FROM file_hashes WHERE file_path = ?", (file_path,)
+            )
             result = cursor.fetchone()
             conn.close()
             return result[0] if result else None
@@ -196,7 +203,9 @@ class SyncState:
         if self.use_sqlite:
             conn = self._get_connection()
             cursor = conn.cursor()
-            cursor.execute("SELECT timestamp FROM file_hashes WHERE file_path = ?", (file_path,))
+            cursor.execute(
+                "SELECT timestamp FROM file_hashes WHERE file_path = ?", (file_path,)
+            )
             result = cursor.fetchone()
             conn.close()
             return result[0] if result else None
@@ -213,10 +222,13 @@ class SyncState:
         if self.use_sqlite:
             conn = self._get_connection()
             cursor = conn.cursor()
-            cursor.execute("""
+            cursor.execute(
+                """
                 INSERT OR REPLACE INTO sync_metadata (key, value)
                 VALUES ('last_sync', ?)
-            """, (timestamp,))
+            """,
+                (timestamp,),
+            )
             conn.commit()
             conn.close()
         else:
@@ -254,10 +266,13 @@ class SyncState:
         if self.use_sqlite:
             conn = self._get_connection()
             cursor = conn.cursor()
-            cursor.execute("""
+            cursor.execute(
+                """
                 INSERT INTO conflicts (file_path, reason, timestamp)
                 VALUES (?, ?, ?)
-            """, (file_path, reason, timestamp))
+            """,
+                (file_path, reason, timestamp),
+            )
             conn.commit()
             conn.close()
         else:
@@ -278,7 +293,9 @@ class SyncState:
         if self.use_sqlite:
             conn = self._get_connection()
             cursor = conn.cursor()
-            cursor.execute("SELECT file_path, reason, timestamp FROM conflicts ORDER BY timestamp DESC")
+            cursor.execute(
+                "SELECT file_path, reason, timestamp FROM conflicts ORDER BY timestamp DESC"
+            )
             results = cursor.fetchall()
             conn.close()
             return [
@@ -409,34 +426,37 @@ class SyncState:
         else:
             self.state = self._default_state()
             self.save_state()
-    
+
     def get_files_by_modified_range(self, start: float, end: float) -> List[str]:
         """Get files modified within a time range (SQLite only).
-        
+
         Args:
             start: Start timestamp
             end: End timestamp
-        
+
         Returns:
             List of file paths
         """
         if not self.use_sqlite:
             raise NotImplementedError("Only available with SQLite")
-        
+
         conn = self._get_connection()
         cursor = conn.cursor()
-        cursor.execute("""
-            SELECT file_path FROM file_hashes 
+        cursor.execute(
+            """
+            SELECT file_path FROM file_hashes
             WHERE modified >= ? AND modified <= ?
             ORDER BY modified DESC
-        """, (start, end))
+        """,
+            (start, end),
+        )
         results = cursor.fetchall()
         conn.close()
         return [row[0] for row in results]
-    
+
     def get_statistics(self) -> Dict[str, Any]:
         """Get sync state statistics (SQLite only).
-        
+
         Returns:
             Dictionary with statistics
         """
@@ -446,57 +466,61 @@ class SyncState:
                 "conflicts": len(self.state["conflicts"]),
                 "last_sync": self.state["last_sync"],
             }
-        
+
         conn = self._get_connection()
         cursor = conn.cursor()
-        
+
         cursor.execute("SELECT COUNT(*) FROM file_hashes")
         tracked_files = cursor.fetchone()[0]
-        
+
         cursor.execute("SELECT COUNT(*) FROM conflicts")
         conflicts = cursor.fetchone()[0]
-        
+
         cursor.execute("SELECT value FROM sync_metadata WHERE key = 'last_sync'")
         result = cursor.fetchone()
         last_sync = result[0] if result else None
-        
+
         cursor.execute("SELECT SUM(size) FROM file_hashes")
         total_size_result = cursor.fetchone()
-        total_size = total_size_result[0] if total_size_result and total_size_result[0] else 0
-        
+        total_size = (
+            total_size_result[0] if total_size_result and total_size_result[0] else 0
+        )
+
         conn.close()
-        
+
         return {
             "tracked_files": tracked_files,
             "conflicts": conflicts,
             "last_sync": last_sync,
             "total_size_bytes": total_size,
         }
-    
+
     def create_checkpoint(self) -> Dict[str, Any]:
         """Create a checkpoint of the current state for rollback.
-        
+
         Returns:
             Dictionary containing the current state snapshot
         """
         if self.use_sqlite:
             conn = self._get_connection()
             cursor = conn.cursor()
-            
+
             # Get all file hashes
-            cursor.execute("SELECT file_path, hash, timestamp, size, modified FROM file_hashes")
+            cursor.execute(
+                "SELECT file_path, hash, timestamp, size, modified FROM file_hashes"
+            )
             file_hashes = cursor.fetchall()
-            
+
             # Get all conflicts
             cursor.execute("SELECT file_path, reason, timestamp FROM conflicts")
             conflicts = cursor.fetchall()
-            
+
             # Get metadata
             cursor.execute("SELECT key, value FROM sync_metadata")
             metadata = cursor.fetchall()
-            
+
             conn.close()
-            
+
             return {
                 "file_hashes": file_hashes,
                 "conflicts": conflicts,
@@ -506,47 +530,57 @@ class SyncState:
         else:
             # For JSON mode, return a deep copy
             import copy
+
             return {
                 "state": copy.deepcopy(self.state),
                 "checkpoint_time": datetime.now().isoformat(),
             }
-    
+
     def restore_checkpoint(self, checkpoint: Dict[str, Any]) -> None:
         """Restore state from a checkpoint.
-        
+
         Args:
             checkpoint: Checkpoint dictionary created by create_checkpoint()
         """
         if self.use_sqlite:
             conn = self._get_connection()
             cursor = conn.cursor()
-            
+
             # Clear existing data
             cursor.execute("DELETE FROM file_hashes")
             cursor.execute("DELETE FROM conflicts")
             cursor.execute("DELETE FROM sync_metadata")
-            
+
             # Restore file hashes
             for row in checkpoint["file_hashes"]:
-                cursor.execute("""
+                cursor.execute(
+                    """
                     INSERT INTO file_hashes (file_path, hash, timestamp, size, modified)
                     VALUES (?, ?, ?, ?, ?)
-                """, row)
-            
+                """,
+                    row,
+                )
+
             # Restore conflicts
             for row in checkpoint["conflicts"]:
-                cursor.execute("""
+                cursor.execute(
+                    """
                     INSERT INTO conflicts (file_path, reason, timestamp)
                     VALUES (?, ?, ?)
-                """, row)
-            
+                """,
+                    row,
+                )
+
             # Restore metadata
             for row in checkpoint["metadata"]:
-                cursor.execute("""
+                cursor.execute(
+                    """
                     INSERT INTO sync_metadata (key, value)
                     VALUES (?, ?)
-                """, row)
-            
+                """,
+                    row,
+                )
+
             conn.commit()
             conn.close()
         else:

@@ -142,7 +142,7 @@ export default class MemoGraphPlugin extends Plugin {
 
     async saveSettings() {
         await this.saveData(this.settings);
-        
+
         // Restart auto-sync if settings changed
         if (this.settings.autoSync) {
             this.enableAutoSync();

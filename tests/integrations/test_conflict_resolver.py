@@ -8,7 +8,6 @@ Tests cover:
 - Hash content functionality
 """
 
-import pytest
 from memograph.integrations.obsidian.conflict_resolver import (
     ConflictResolver,
     ConflictStrategy,

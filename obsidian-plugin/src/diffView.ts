@@ -104,25 +104,25 @@ export class DiffView {
      */
     static renderUnifiedDiff(container: HTMLElement, localText: string, remoteText: string): void {
         const diff = this.computeDiff(localText, remoteText);
-        
+
         container.empty();
         container.addClass('memograph-diff-unified');
 
         // Stats header
         const statsEl = container.createDiv({ cls: 'diff-stats' });
-        statsEl.createEl('span', { 
-            text: `${diff.stats.added} additions`, 
-            cls: 'diff-stat-added' 
+        statsEl.createEl('span', {
+            text: `${diff.stats.added} additions`,
+            cls: 'diff-stat-added'
         });
         statsEl.createEl('span', { text: ' · ' });
-        statsEl.createEl('span', { 
-            text: `${diff.stats.removed} deletions`, 
-            cls: 'diff-stat-removed' 
+        statsEl.createEl('span', {
+            text: `${diff.stats.removed} deletions`,
+            cls: 'diff-stat-removed'
         });
         statsEl.createEl('span', { text: ' · ' });
-        statsEl.createEl('span', { 
-            text: `${diff.stats.modified} modifications`, 
-            cls: 'diff-stat-modified' 
+        statsEl.createEl('span', {
+            text: `${diff.stats.modified} modifications`,
+            cls: 'diff-stat-modified'
         });
 
         // Unified diff content
@@ -133,8 +133,8 @@ export class DiffView {
 
         allLines.forEach(line => {
             const lineEl = diffContent.createDiv({ cls: `diff-line diff-line-${line.type}` });
-            
-            const lineNumber = lineEl.createEl('span', { 
+
+            const lineNumber = lineEl.createEl('span', {
                 cls: 'diff-line-number',
                 text: line.lineNumber > 0 ? String(line.lineNumber) : ' '
             });
@@ -150,7 +150,7 @@ export class DiffView {
                 marker.textContent = '  ';
             }
 
-            const content = lineEl.createEl('span', { 
+            const content = lineEl.createEl('span', {
                 cls: 'diff-line-content',
                 text: line.content
             });
@@ -162,25 +162,25 @@ export class DiffView {
      */
     static renderSideBySideDiff(container: HTMLElement, localText: string, remoteText: string): void {
         const diff = this.computeDiff(localText, remoteText);
-        
+
         container.empty();
         container.addClass('memograph-diff-sidebyside');
 
         // Stats header
         const statsEl = container.createDiv({ cls: 'diff-stats' });
-        statsEl.createEl('span', { 
-            text: `${diff.stats.added} additions`, 
-            cls: 'diff-stat-added' 
+        statsEl.createEl('span', {
+            text: `${diff.stats.added} additions`,
+            cls: 'diff-stat-added'
         });
         statsEl.createEl('span', { text: ' · ' });
-        statsEl.createEl('span', { 
-            text: `${diff.stats.removed} deletions`, 
-            cls: 'diff-stat-removed' 
+        statsEl.createEl('span', {
+            text: `${diff.stats.removed} deletions`,
+            cls: 'diff-stat-removed'
         });
         statsEl.createEl('span', { text: ' · ' });
-        statsEl.createEl('span', { 
-            text: `${diff.stats.modified} modifications`, 
-            cls: 'diff-stat-modified' 
+        statsEl.createEl('span', {
+            text: `${diff.stats.modified} modifications`,
+            cls: 'diff-stat-modified'
         });
 
         // Side-by-side panels

@@ -864,39 +864,43 @@ def main():
 
         async def _suggest():
             file_path = Path(args.file_path)
-            
+
             if not file_path.exists():
                 print(f"Error: File not found: {file_path}")
                 return
-            
-            if not file_path.suffix.lower() in [".md", ".txt"]:
-                print(f"Warning: File type {file_path.suffix} may not be optimal. Expected .md or .txt")
-            
+
+            if file_path.suffix.lower() not in [".md", ".txt"]:
+                print(
+                    f"Warning: File type {file_path.suffix} may not be optimal. Expected .md or .txt"
+                )
+
             # Read file content
             try:
                 content = file_path.read_text(encoding="utf-8")
             except Exception as e:
                 print(f"Error reading file: {e}")
                 return
-            
+
             # Extract existing tags
             existing_tags = re.findall(r"#(\w+)", content)
-            
+
             # Create tagger and get suggestions
             tagger = AutoTagger(kernel, args.min_confidence, args.max_suggestions)
-            suggestions = await tagger.suggest_tags(content, file_path.stem, existing_tags)
-            
+            suggestions = await tagger.suggest_tags(
+                content, file_path.stem, existing_tags
+            )
+
             if not suggestions:
                 print("\nNo tag suggestions found.")
                 return
-            
+
             # Display suggestions
             print(f"\n=== Tag Suggestions for: {file_path.name} ===\n")
             for i, s in enumerate(suggestions, 1):
                 bar = "=" * int(s.confidence * 10)
                 print(f"{i}. #{s.tag} {bar} {s.confidence:.0%}")
                 print(f"   {s.reason} ({s.source})\n")
-            
+
             # Apply if requested
             if args.apply:
                 tags_line = " ".join(f"#{s.tag}" for s in suggestions)
@@ -906,7 +910,7 @@ def main():
                     print(f"\n[OK] Applied {len(suggestions)} tags to {file_path.name}")
                 except Exception as e:
                     print(f"\n[ERROR] Failed to apply tags: {e}")
-        
+
         asyncio.run(_suggest())
         return
 
@@ -919,78 +923,86 @@ def main():
 
         async def _suggest_links():
             file_path = Path(args.file_path)
-            
+
             if not file_path.exists():
                 print(f"Error: File not found: {file_path}")
                 return
-            
-            if not file_path.suffix.lower() in [".md", ".txt"]:
-                print(f"Warning: File type {file_path.suffix} may not be optimal. Expected .md or .txt")
-            
+
+            if file_path.suffix.lower() not in [".md", ".txt"]:
+                print(
+                    f"Warning: File type {file_path.suffix} may not be optimal. Expected .md or .txt"
+                )
+
             # Read file content
             try:
                 content = file_path.read_text(encoding="utf-8")
             except Exception as e:
                 print(f"Error reading file: {e}")
                 return
-            
+
             # Extract existing wikilinks
-            existing_links_pattern = re.compile(r'\[\[([^\]|]+)(?:\|[^\]]+)?\]\]')
+            existing_links_pattern = re.compile(r"\[\[([^\]|]+)(?:\|[^\]]+)?\]\]")
             existing_links = existing_links_pattern.findall(content)
-            
+
             # Create suggester and get suggestions
             suggester = LinkSuggester(kernel, args.min_confidence, args.max_suggestions)
             suggestions = await suggester.suggest_links(
-                content=content,
-                title=file_path.stem,
-                existing_links=existing_links
+                content=content, title=file_path.stem, existing_links=existing_links
             )
-            
+
             if not suggestions:
                 print("\nNo link suggestions found.")
                 return
-            
+
             # Display suggestions
             print(f"\n=== Link Suggestions for: {file_path.name} ===\n")
             for i, s in enumerate(suggestions, 1):
                 bar = "=" * int(s.confidence * 10)
-                bidirectional_marker = " ⟷" if (args.show_bidirectional and s.bidirectional) else ""
-                print(f"{i}. [[{s.target_title}]] {bar} {s.confidence:.0%}{bidirectional_marker}")
+                bidirectional_marker = (
+                    " ⟷" if (args.show_bidirectional and s.bidirectional) else ""
+                )
+                print(
+                    f"{i}. [[{s.target_title}]] {bar} {s.confidence:.0%}{bidirectional_marker}"
+                )
                 print(f"   {s.reason} ({s.source})\n")
-            
+
             # Apply if requested
             if args.apply:
                 # Add wikilinks at the end of the file
                 links_line = " ".join(f"[[{s.target_title}]]" for s in suggestions)
-                new_content = content.rstrip() + f"\n\n## Suggested Links\n{links_line}\n"
+                new_content = (
+                    content.rstrip() + f"\n\n## Suggested Links\n{links_line}\n"
+                )
                 try:
                     file_path.write_text(new_content, encoding="utf-8")
-                    print(f"\n✓ Applied {len(suggestions)} link suggestions to {file_path.name}")
+                    print(
+                        f"\n✓ Applied {len(suggestions)} link suggestions to {file_path.name}"
+                    )
                 except Exception as e:
                     print(f"\n✗ Failed to apply links: {e}")
-        
+
         asyncio.run(_suggest_links())
         return
 
     if args.command == "detect-gaps":
         import asyncio
         import json
-        
+
         from .ai.gap_detector import GapDetector
-        
+
         async def _detect_gaps():
             detector = GapDetector(
                 kernel,
                 min_severity=args.min_severity,
                 max_gaps=args.max_gaps,
             )
-            
+
             gaps = await detector.detect_gaps()
-            
+
             # Filter by gap types if specified
             if args.gap_types:
                 gaps = [g for g in gaps if g.gap_type in args.gap_types]
-            
+
             if args.output == "json":
                 # JSON output
                 output = {
@@ -1014,96 +1026,102 @@ def main():
                 if not gaps:
                     print("\n✓ No significant knowledge gaps detected!")
                     return
-                
+
                 print(f"\n=== Knowledge Gaps Detected ({len(gaps)}) ===\n")
-                
+
                 for i, gap in enumerate(gaps, 1):
                     severity_bar = "!" * int(gap.severity * 10)
                     print(f"{i}. [{gap.gap_type.upper()}] {gap.title}")
                     print(f"   Severity: {severity_bar} {gap.severity:.0%}")
                     print(f"   {gap.description}\n")
-                    
+
                     if gap.suggestions:
                         print("   Suggestions:")
                         for suggestion in gap.suggestions[:3]:
                             print(f"   • {suggestion}")
-                    
+
                     if gap.related_notes:
                         print(f"   Related: {', '.join(gap.related_notes[:3])}")
-                    
+
                     print()
-        
+
         asyncio.run(_detect_gaps())
         return
 
     if args.command == "analyze-knowledge":
         import asyncio
         import json
-        
+
         from .ai.gap_detector import GapDetector
-        
+
         async def _analyze():
             detector = GapDetector(kernel)
             analysis = await detector.analyze_knowledge_base()
-            
+
             # Filter components based on flags
             if args.no_gaps:
-                analysis['gaps'] = []
-                analysis['summary']['total_gaps'] = 0
+                analysis["gaps"] = []
+                analysis["summary"]["total_gaps"] = 0
             if args.no_clusters:
-                analysis['clusters'] = []
-                analysis['summary']['total_clusters'] = 0
+                analysis["clusters"] = []
+                analysis["summary"]["total_clusters"] = 0
             if args.no_paths:
-                analysis['learning_paths'] = []
-                analysis['summary']['total_paths'] = 0
-            
+                analysis["learning_paths"] = []
+                analysis["summary"]["total_paths"] = 0
+
             if args.output == "json":
                 # JSON output
                 print(json.dumps(analysis, indent=2))
             else:
                 # Text output
-                summary = analysis['summary']
+                summary = analysis["summary"]
                 print("\n=== Knowledge Base Analysis ===\n")
                 print(f"Total Gaps: {summary['total_gaps']}")
                 print(f"Total Clusters: {summary['total_clusters']}")
                 print(f"Total Learning Paths: {summary['total_paths']}")
-                
-                if summary.get('gap_types'):
-                    print(f"\nGaps by Type:")
-                    for gap_type, count in summary['gap_types'].items():
+
+                if summary.get("gap_types"):
+                    print("\nGaps by Type:")
+                    for gap_type, count in summary["gap_types"].items():
                         if count > 0:
                             print(f"  • {gap_type}: {count}")
-                
-                if summary.get('avg_severity'):
+
+                if summary.get("avg_severity"):
                     print(f"\nAverage Gap Severity: {summary['avg_severity']:.0%}")
-                
+
                 # Show top gaps
-                if not args.no_gaps and analysis['gaps']:
-                    print(f"\n=== Top Knowledge Gaps ===\n")
-                    for i, gap in enumerate(analysis['gaps'][:5], 1):
+                if not args.no_gaps and analysis["gaps"]:
+                    print("\n=== Top Knowledge Gaps ===\n")
+                    for i, gap in enumerate(analysis["gaps"][:5], 1):
                         print(f"{i}. [{gap['type']}] {gap['title']}")
-                        print(f"   Severity: {gap['severity']:.0%} - {gap['description']}\n")
-                
+                        print(
+                            f"   Severity: {gap['severity']:.0%} - {gap['description']}\n"
+                        )
+
                 # Show clusters
-                if not args.no_clusters and analysis['clusters']:
-                    print(f"=== Topic Clusters ===\n")
-                    for i, cluster in enumerate(analysis['clusters'][:5], 1):
+                if not args.no_clusters and analysis["clusters"]:
+                    print("=== Topic Clusters ===\n")
+                    for i, cluster in enumerate(analysis["clusters"][:5], 1):
                         print(f"{i}. {cluster['name']} ({cluster['size']} notes)")
                         print(f"   Keywords: {', '.join(cluster['keywords'][:5])}")
-                        print(f"   Density: {cluster['density']:.0%}, Coverage: {cluster['coverage']:.0%}\n")
-                
+                        print(
+                            f"   Density: {cluster['density']:.0%}, Coverage: {cluster['coverage']:.0%}\n"
+                        )
+
                 # Show learning paths
-                if not args.no_paths and analysis['learning_paths']:
-                    print(f"=== Learning Paths ===\n")
-                    for i, path in enumerate(analysis['learning_paths'][:3], 1):
+                if not args.no_paths and analysis["learning_paths"]:
+                    print("=== Learning Paths ===\n")
+                    for i, path in enumerate(analysis["learning_paths"][:3], 1):
                         print(f"{i}. {path['topic']} ({path['order']} path)")
                         print(f"   Completeness: {path['completeness']:.0%}")
                         print(f"   Notes: {len(path['notes'])}")
-                        if path['missing_steps']:
-                            print(f"   Missing: {', '.join(path['missing_steps'][:2])}\n")
+                        if path["missing_steps"]:
+                            print(
+                                f"   Missing: {', '.join(path['missing_steps'][:2])}\n"
+                            )
                         else:
                             print()
-        
+
         asyncio.run(_analyze())
         return
 
