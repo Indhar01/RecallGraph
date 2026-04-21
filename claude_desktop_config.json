@@ -1,0 +1,18 @@
+{
+  "mcpServers": {
+    "memograph": {
+      "command": "python",
+      "args": [
+        "-m",
+        "memograph.mcp.run_server_enhanced",
+        "--vault",
+        "C:\\Users\\INDIRAKUMARS\\Documents\\my-vault"
+      ],
+      "env": {
+        "MEMOGRAPH_AUTO_SAVE_AFTER_QUERY": "true",
+        "MEMOGRAPH_AUTO_SAVE_MONITOR": "true",
+        "MEMOGRAPH_IDLE_THRESHOLD": "30"
+      }
+    }
+  }
+}

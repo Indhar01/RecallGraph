@@ -92,7 +92,7 @@ class TestToolSchema:
         """Test that get_tools_schema returns a list."""
         schemas = mcp_server.get_tools_schema()
         assert isinstance(schemas, list)
-        assert len(schemas) == 19
+        assert len(schemas) == 22  # Phase 3 added get_auto_save_analytics
 
     def test_all_tools_have_required_fields(self, mcp_server):
         """Test that all tool schemas have name, description, inputSchema."""
@@ -384,11 +384,95 @@ class TestListAvailableTools:
         """Test listing available tools."""
         result = await mcp_server.list_available_tools()
         assert result["success"] is True
-        assert result["total_tools"] == 19
+        assert result["total_tools"] == 22  # Phase 3 added get_auto_save_analytics
         assert "categories" in result
         assert "autonomous" in result["categories"]
         assert "graph" in result["categories"]
         assert "bulk" in result["categories"]
+
+
+class TestVerificationTools:
+    """Test verification tools for auto-save."""
+
+    @pytest.mark.asyncio
+    async def test_verify_last_save_no_saves(self, mcp_server):
+        """Test verify_last_save when no saves exist."""
+        result = await mcp_server.verify_last_save()
+        assert result["success"] is True
+        assert result["found_recent_save"] is False
+        assert "troubleshooting_tips" in result
+
+    @pytest.mark.asyncio
+    async def test_verify_last_save_with_recent_save(self, mcp_server):
+        """Test verify_last_save after making a save."""
+        # First create a conversation memory
+        await mcp_server.auto_hook_response(
+            user_query="Test question", ai_response="Test answer"
+        )
+
+        # Now verify it
+        result = await mcp_server.verify_last_save(time_window_seconds=60)
+        assert result["success"] is True
+        assert result["found_recent_save"] is True
+        assert "last_save" in result
+        assert result["last_save"]["seconds_ago"] < 10
+
+    @pytest.mark.asyncio
+    async def test_verify_last_save_old_save(self, mcp_server):
+        """Test verify_last_save with very short time window."""
+        await mcp_server.auto_hook_response(
+            user_query="Old question", ai_response="Old answer"
+        )
+
+        # Wait at least 1 second then check with 0 second window
+        import asyncio
+
+        await asyncio.sleep(1.1)
+
+        result = await mcp_server.verify_last_save(time_window_seconds=0)
+        assert result["success"] is True
+        assert result["found_recent_save"] is False
+
+    @pytest.mark.asyncio
+    async def test_get_save_stats_no_attempts(self, mcp_server):
+        """Test get_save_stats with no save attempts."""
+        result = await mcp_server.get_save_stats()
+        assert result["success"] is True
+        assert result["statistics"]["save_attempts"] == 0
+        assert result["statistics"]["save_rate_percent"] == 0.0
+
+    @pytest.mark.asyncio
+    async def test_get_save_stats_with_saves(self, mcp_server):
+        """Test get_save_stats after multiple saves."""
+        # Make several saves
+        for i in range(5):
+            await mcp_server.auto_hook_response(
+                user_query=f"Question {i}", ai_response=f"Answer {i}"
+            )
+
+        result = await mcp_server.get_save_stats(period="session")
+        assert result["success"] is True
+        assert result["statistics"]["save_attempts"] == 5
+        assert result["statistics"]["successful_saves"] == 5
+        assert result["statistics"]["save_rate_percent"] == 100.0
+        assert result["interpretation"]["status"] in ["excellent", "good"]
+
+    @pytest.mark.asyncio
+    async def test_get_save_stats_different_periods(self, mcp_server):
+        """Test get_save_stats with different time periods."""
+        await mcp_server.auto_hook_response(user_query="Test", ai_response="Response")
+
+        for period in ["session", "hour", "day", "week", "all"]:
+            result = await mcp_server.get_save_stats(period=period)
+            assert result["success"] is True
+            assert result["period"] == period
+
+    @pytest.mark.asyncio
+    async def test_get_save_stats_invalid_period(self, mcp_server):
+        """Test get_save_stats with invalid period."""
+        result = await mcp_server.get_save_stats(period="invalid")
+        assert result["success"] is False
+        assert "Invalid period" in result["error"]
 
 
 class TestGraphTools:
@@ -507,3 +591,196 @@ class TestCreateMemorySuggestions:
                 "python" in link.get("reason", "").lower()
                 for link in result["suggested_links"]
             )
+
+
+# ==================== Phase 3 Tests ====================
+
+
+class TestPhase3Analytics:
+    """Test Phase 3 auto-save analytics functionality."""
+
+    @pytest.mark.asyncio
+    async def test_get_auto_save_analytics_empty_vault(self, mcp_server):
+        """Test analytics with no conversation memories."""
+        result = await mcp_server.get_auto_save_analytics(period="day")
+        assert result["success"] is True
+        assert result["period"] == "day"
+        assert result["summary"]["total_conversations_saved"] == 0
+        assert "performance_grade" in result
+        assert "by_layer" in result
+
+    @pytest.mark.asyncio
+    async def test_get_auto_save_analytics_with_saves(self, mcp_server):
+        """Test analytics after creating conversation memories."""
+        # Create some Layer 1 saves
+        for i in range(3):
+            await mcp_server.auto_hook_response(
+                user_query=f"Question {i}?", ai_response=f"Answer {i}"
+            )
+
+        result = await mcp_server.get_auto_save_analytics(period="day")
+        assert result["success"] is True
+        assert result["summary"]["total_conversations_saved"] == 3
+        assert result["by_layer"]["layer1_explicit_saves"] == 3
+        assert result["by_layer"]["layer2_monitor_saves"] == 0
+
+    @pytest.mark.asyncio
+    async def test_analytics_performance_grading(self, mcp_server):
+        """Test that performance grades are calculated correctly."""
+        # Create enough saves for good performance
+        for i in range(10):
+            await mcp_server.auto_hook_response(
+                user_query=f"Test {i}", ai_response=f"Response {i}"
+            )
+
+        result = await mcp_server.get_auto_save_analytics(period="day")
+        assert result["success"] is True
+        grade = result["performance_grade"]
+        assert "grade" in grade
+        assert "status" in grade
+        assert "emoji" in grade
+        # With 10 saves, should have good grade
+        assert grade["grade"] in ["A+", "A", "B"]
+
+    @pytest.mark.asyncio
+    async def test_analytics_recommendations(self, mcp_server):
+        """Test that analytics provides recommendations."""
+        result = await mcp_server.get_auto_save_analytics(
+            period="day", include_recommendations=True
+        )
+        assert result["success"] is True
+        assert "recommendations" in result
+        assert isinstance(result["recommendations"], list)
+
+    @pytest.mark.asyncio
+    async def test_analytics_no_recommendations(self, mcp_server):
+        """Test analytics without recommendations."""
+        result = await mcp_server.get_auto_save_analytics(
+            period="day", include_recommendations=False
+        )
+        assert result["success"] is True
+        assert "recommendations" not in result
+
+    @pytest.mark.asyncio
+    async def test_analytics_different_periods(self, mcp_server):
+        """Test analytics with different time periods."""
+        await mcp_server.auto_hook_response(user_query="Test", ai_response="Response")
+
+        for period in ["hour", "day", "week", "all"]:
+            result = await mcp_server.get_auto_save_analytics(period=period)
+            assert result["success"] is True
+            assert result["period"] == period
+            assert "time_window" in result
+
+    @pytest.mark.asyncio
+    async def test_analytics_layer_differentiation(self, mcp_server):
+        """Test that analytics differentiates between Layer 1 and Layer 2."""
+        # Create Layer 1 save
+        await mcp_server.auto_hook_response(
+            user_query="Layer 1 test", ai_response="Layer 1 response"
+        )
+
+        # Manually create a Layer 2 save (simulating monitor save)
+        from memograph.core.enums import MemoryType
+
+        mcp_server.kernel.remember(
+            title="Auto-detected: Layer 2 test",
+            content="**Saved By:** Layer 2 (Server Monitor)\n\nTest content",
+            memory_type=MemoryType.EPISODIC,
+            tags=["conversation", "monitor-layer2", "auto-detected"],
+        )
+        mcp_server.kernel.ingest()
+
+        result = await mcp_server.get_auto_save_analytics(period="day")
+        assert result["success"] is True
+        assert result["by_layer"]["layer1_explicit_saves"] >= 1
+        assert result["by_layer"]["layer2_monitor_saves"] >= 1
+
+    @pytest.mark.asyncio
+    async def test_analytics_time_window_calculation(self, mcp_server):
+        """Test that time window is calculated correctly."""
+        result = await mcp_server.get_auto_save_analytics(period="day")
+        assert result["success"] is True
+        assert "time_window" in result
+        assert "start" in result["time_window"]
+        assert "end" in result["time_window"]
+        assert "duration_hours" in result["time_window"]
+        # Day should be ~24 hours
+        assert result["time_window"]["duration_hours"] >= 23
+
+
+class TestPhase3EnhancedNotifications:
+    """Test Phase 3 enhanced notification messages."""
+
+    @pytest.mark.asyncio
+    async def test_auto_hook_response_enhanced_message(self, mcp_server):
+        """Test that auto_hook_response returns enhanced message."""
+        result = await mcp_server.auto_hook_response(
+            user_query="Test question", ai_response="Test answer"
+        )
+        assert result["success"] is True
+        assert "layer" in result
+        assert result["layer"] == "layer1"
+        assert "tip" in result
+        assert "Layer 1" in result["message"]
+
+    @pytest.mark.asyncio
+    async def test_layer1_saves_have_proper_tags(self, mcp_server):
+        """Test that Layer 1 saves include layer1-explicit tag."""
+        await mcp_server.auto_hook_response(
+            user_query="Tag test", ai_response="Tag response"
+        )
+
+        # Check the saved memory has the tag
+        mcp_server.kernel.ingest()
+        nodes = mcp_server.kernel.graph.all_nodes()
+        conversation_nodes = [n for n in nodes if "conversation" in n.tags]
+        assert len(conversation_nodes) >= 1
+        assert "layer1-explicit" in conversation_nodes[0].tags
+
+    @pytest.mark.asyncio
+    async def test_layer1_saves_have_metadata(self, mcp_server):
+        """Test that Layer 1 saves include 'Saved By' metadata."""
+        await mcp_server.auto_hook_response(
+            user_query="Metadata test", ai_response="Metadata response"
+        )
+
+        # Check the saved memory has the metadata
+        mcp_server.kernel.ingest()
+        nodes = mcp_server.kernel.graph.all_nodes()
+        conversation_nodes = [n for n in nodes if "conversation" in n.tags]
+        assert len(conversation_nodes) >= 1
+        assert (
+            "**Saved By:** Layer 1 (AI Explicit Save)" in conversation_nodes[0].content
+        )
+
+
+class TestPhase3ToolCount:
+    """Test that Phase 3 adds get_auto_save_analytics tool."""
+
+    def test_tool_count_includes_analytics(self, mcp_server):
+        """Test that tool count is 22 (21 + get_auto_save_analytics)."""
+        schemas = mcp_server.get_tools_schema()
+        # Originally 21 tools, Phase 3 adds get_auto_save_analytics = 22
+        assert len(schemas) == 22
+
+    def test_get_auto_save_analytics_tool_in_schema(self, mcp_server):
+        """Test that get_auto_save_analytics is in tool schema."""
+        schemas = mcp_server.get_tools_schema()
+        tool_names = [s["name"] for s in schemas]
+        assert "get_auto_save_analytics" in tool_names
+
+    def test_analytics_tool_has_proper_schema(self, mcp_server):
+        """Test that analytics tool has proper schema."""
+        schemas = mcp_server.get_tools_schema()
+        analytics_schema = next(
+            s for s in schemas if s["name"] == "get_auto_save_analytics"
+        )
+
+        assert "description" in analytics_schema
+        assert "📊" in analytics_schema["description"]
+        assert "inputSchema" in analytics_schema
+        assert "period" in analytics_schema["inputSchema"]["properties"]
+        assert (
+            "include_recommendations" in analytics_schema["inputSchema"]["properties"]
+        )

@@ -119,12 +119,13 @@ def create_app(vault_path: str, use_gam: bool = True) -> FastAPI:
         return response
 
     # Import and register routes
-    from .routes import analytics, graph, memories, search
+    from .routes import ai, analytics, graph, memories, search
 
     app.include_router(memories.router, prefix="/api", tags=["memories"])
     app.include_router(search.router, prefix="/api", tags=["search"])
     app.include_router(graph.router, prefix="/api", tags=["graph"])
     app.include_router(analytics.router, prefix="/api", tags=["analytics"])
+    app.include_router(ai.router, prefix="/api", tags=["ai"])
 
     # Health check endpoint
     @app.get("/api/health")

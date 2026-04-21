@@ -607,6 +607,112 @@ def main():
 
     subparsers.add_parser("verify-mcp", help="Verify MCP setup and configuration")
 
+    suggest_tags_parser = subparsers.add_parser(
+        "suggest-tags", help="Suggest tags for a note file using AI analysis"
+    )
+    suggest_tags_parser.add_argument(
+        "file_path", help="Path to the note file to analyze"
+    )
+    suggest_tags_parser.add_argument(
+        "--min-confidence",
+        type=float,
+        default=0.3,
+        help="Minimum confidence score (0.0-1.0, default: 0.3)",
+    )
+    suggest_tags_parser.add_argument(
+        "--max-suggestions",
+        type=int,
+        default=5,
+        help="Maximum number of suggestions (default: 5)",
+    )
+    suggest_tags_parser.add_argument(
+        "--apply",
+        action="store_true",
+        help="Apply suggestions by adding them to the file",
+    )
+
+    suggest_links_parser = subparsers.add_parser(
+        "suggest-links", help="Suggest wikilinks for a note file using AI analysis"
+    )
+    suggest_links_parser.add_argument(
+        "file_path", help="Path to the note file to analyze"
+    )
+    suggest_links_parser.add_argument(
+        "--min-confidence",
+        type=float,
+        default=0.4,
+        help="Minimum confidence score (0.0-1.0, default: 0.4)",
+    )
+    suggest_links_parser.add_argument(
+        "--max-suggestions",
+        type=int,
+        default=10,
+        help="Maximum number of suggestions (default: 10)",
+    )
+    suggest_links_parser.add_argument(
+        "--apply",
+        action="store_true",
+        help="Apply suggestions by adding wikilinks to the file",
+    )
+    suggest_links_parser.add_argument(
+        "--show-bidirectional",
+        action="store_true",
+        help="Show which suggestions are bidirectional (both should link)",
+    )
+
+    detect_gaps_parser = subparsers.add_parser(
+        "detect-gaps", help="Detect knowledge gaps in the vault"
+    )
+    detect_gaps_parser.add_argument(
+        "--min-severity",
+        type=float,
+        default=0.3,
+        help="Minimum severity threshold (0.0-1.0, default: 0.3)",
+    )
+    detect_gaps_parser.add_argument(
+        "--max-gaps",
+        type=int,
+        default=20,
+        help="Maximum number of gaps to return (default: 20)",
+    )
+    detect_gaps_parser.add_argument(
+        "--gap-types",
+        nargs="*",
+        choices=["missing_topic", "weak_coverage", "isolated_note", "missing_link"],
+        help="Specific gap types to detect (optional)",
+    )
+    detect_gaps_parser.add_argument(
+        "--output",
+        choices=["text", "json"],
+        default="text",
+        help="Output format (default: text)",
+    )
+
+    analyze_knowledge_parser = subparsers.add_parser(
+        "analyze-knowledge", help="Perform comprehensive knowledge base analysis"
+    )
+    analyze_knowledge_parser.add_argument(
+        "--no-gaps",
+        action="store_true",
+        help="Exclude gap detection from analysis",
+    )
+    analyze_knowledge_parser.add_argument(
+        "--no-clusters",
+        action="store_true",
+        help="Exclude topic clustering from analysis",
+    )
+    analyze_knowledge_parser.add_argument(
+        "--no-paths",
+        action="store_true",
+        help="Exclude learning path suggestions from analysis",
+    )
+    analyze_knowledge_parser.add_argument(
+        "--output",
+        choices=["text", "json"],
+        default="text",
+        help="Output format (default: text)",
+    )
+
     args = parser.parse_args()
     kernel = MemoryKernel(args.vault)
 
@@ -747,6 +853,258 @@ def main():
         setup = MCPSetup(vault_path=args.vault)
         results = setup.verify_setup()
         setup.print_verification_results(results)
+        return
+
+    if args.command == "suggest-tags":
+        import asyncio
+        import re
+        from pathlib import Path
+
+        from .ai.auto_tagger import AutoTagger
+
+        async def _suggest():
+            file_path = Path(args.file_path)
+            
+            if not file_path.exists():
+                print(f"Error: File not found: {file_path}")
+                return
+            
+            if not file_path.suffix.lower() in [".md", ".txt"]:
+                print(f"Warning: File type {file_path.suffix} may not be optimal. Expected .md or .txt")
+            
+            # Read file content
+            try:
+                content = file_path.read_text(encoding="utf-8")
+            except Exception as e:
+                print(f"Error reading file: {e}")
+                return
+            
+            # Extract existing tags
+            existing_tags = re.findall(r"#(\w+)", content)
+            
+            # Create tagger and get suggestions
+            tagger = AutoTagger(kernel, args.min_confidence, args.max_suggestions)
+            suggestions = await tagger.suggest_tags(content, file_path.stem, existing_tags)
+            
+            if not suggestions:
+                print("\nNo tag suggestions found.")
+                return
+            
+            # Display suggestions
+            print(f"\n=== Tag Suggestions for: {file_path.name} ===\n")
+            for i, s in enumerate(suggestions, 1):
+                bar = "=" * int(s.confidence * 10)
+                print(f"{i}. #{s.tag} {bar} {s.confidence:.0%}")
+                print(f"   {s.reason} ({s.source})\n")
+            
+            # Apply if requested
+            if args.apply:
+                tags_line = " ".join(f"#{s.tag}" for s in suggestions)
+                new_content = content.rstrip() + f"\n\n{tags_line}\n"
+                try:
+                    file_path.write_text(new_content, encoding="utf-8")
+                    print(f"\n[OK] Applied {len(suggestions)} tags to {file_path.name}")
+                except Exception as e:
+                    print(f"\n[ERROR] Failed to apply tags: {e}")
+        
+        asyncio.run(_suggest())
+        return
+
+    if args.command == "suggest-links":
+        import asyncio
+        import re
+        from pathlib import Path
+
+        from .ai.link_suggester import LinkSuggester
+
+        async def _suggest_links():
+            file_path = Path(args.file_path)
+            
+            if not file_path.exists():
+                print(f"Error: File not found: {file_path}")
+                return
+            
+            if not file_path.suffix.lower() in [".md", ".txt"]:
+                print(f"Warning: File type {file_path.suffix} may not be optimal. Expected .md or .txt")
+            
+            # Read file content
+            try:
+                content = file_path.read_text(encoding="utf-8")
+            except Exception as e:
+                print(f"Error reading file: {e}")
+                return
+            
+            # Extract existing wikilinks
+            existing_links_pattern = re.compile(r'\[\[([^\]|]+)(?:\|[^\]]+)?\]\]')
+            existing_links = existing_links_pattern.findall(content)
+            
+            # Create suggester and get suggestions
+            suggester = LinkSuggester(kernel, args.min_confidence, args.max_suggestions)
+            suggestions = await suggester.suggest_links(
+                content=content,
+                title=file_path.stem,
+                existing_links=existing_links
+            )
+            
+            if not suggestions:
+                print("\nNo link suggestions found.")
+                return
+            
+            # Display suggestions
+            print(f"\n=== Link Suggestions for: {file_path.name} ===\n")
+            for i, s in enumerate(suggestions, 1):
+                bar = "=" * int(s.confidence * 10)
+                bidirectional_marker = " ⟷" if (args.show_bidirectional and s.bidirectional) else ""
+                print(f"{i}. [[{s.target_title}]] {bar} {s.confidence:.0%}{bidirectional_marker}")
+                print(f"   {s.reason} ({s.source})\n")
+            
+            # Apply if requested
+            if args.apply:
+                # Add wikilinks at the end of the file
+                links_line = " ".join(f"[[{s.target_title}]]" for s in suggestions)
+                new_content = content.rstrip() + f"\n\n## Suggested Links\n{links_line}\n"
+                try:
+                    file_path.write_text(new_content, encoding="utf-8")
+                    print(f"\n✓ Applied {len(suggestions)} link suggestions to {file_path.name}")
+                except Exception as e:
+                    print(f"\n✗ Failed to apply links: {e}")
+        
+        asyncio.run(_suggest_links())
+        return
+
+    if args.command == "detect-gaps":
+        import asyncio
+        import json
+        
+        from .ai.gap_detector import GapDetector
+        
+        async def _detect_gaps():
+            detector = GapDetector(
+                kernel,
+                min_severity=args.min_severity,
+                max_gaps=args.max_gaps,
+            )
+            
+            gaps = await detector.detect_gaps()
+            
+            # Filter by gap types if specified
+            if args.gap_types:
+                gaps = [g for g in gaps if g.gap_type in args.gap_types]
+            
+            if args.output == "json":
+                # JSON output
+                output = {
+                    "success": True,
+                    "count": len(gaps),
+                    "gaps": [
+                        {
+                            "type": g.gap_type,
+                            "title": g.title,
+                            "description": g.description,
+                            "severity": round(g.severity, 2),
+                            "suggestions": g.suggestions,
+                            "related_notes": g.related_notes[:5],
+                        }
+                        for g in gaps
+                    ],
+                }
+                print(json.dumps(output, indent=2))
+            else:
+                # Text output
+                if not gaps:
+                    print("\n✓ No significant knowledge gaps detected!")
+                    return
+                
+                print(f"\n=== Knowledge Gaps Detected ({len(gaps)}) ===\n")
+                
+                for i, gap in enumerate(gaps, 1):
+                    severity_bar = "!" * int(gap.severity * 10)
+                    print(f"{i}. [{gap.gap_type.upper()}] {gap.title}")
+                    print(f"   Severity: {severity_bar} {gap.severity:.0%}")
+                    print(f"   {gap.description}\n")
+                    
+                    if gap.suggestions:
+                        print("   Suggestions:")
+                        for suggestion in gap.suggestions[:3]:
+                            print(f"   • {suggestion}")
+                    
+                    if gap.related_notes:
+                        print(f"   Related: {', '.join(gap.related_notes[:3])}")
+                    
+                    print()
+        
+        asyncio.run(_detect_gaps())
+        return
+
+    if args.command == "analyze-knowledge":
+        import asyncio
+        import json
+        
+        from .ai.gap_detector import GapDetector
+        
+        async def _analyze():
+            detector = GapDetector(kernel)
+            analysis = await detector.analyze_knowledge_base()
+            
+            # Filter components based on flags
+            if args.no_gaps:
+                analysis['gaps'] = []
+                analysis['summary']['total_gaps'] = 0
+            if args.no_clusters:
+                analysis['clusters'] = []
+                analysis['summary']['total_clusters'] = 0
+            if args.no_paths:
+                analysis['learning_paths'] = []
+                analysis['summary']['total_paths'] = 0
+            
+            if args.output == "json":
+                # JSON output
+                print(json.dumps(analysis, indent=2))
+            else:
+                # Text output
+                summary = analysis['summary']
+                print("\n=== Knowledge Base Analysis ===\n")
+                print(f"Total Gaps: {summary['total_gaps']}")
+                print(f"Total Clusters: {summary['total_clusters']}")
+                print(f"Total Learning Paths: {summary['total_paths']}")
+                
+                if summary.get('gap_types'):
+                    print(f"\nGaps by Type:")
+                    for gap_type, count in summary['gap_types'].items():
+                        if count > 0:
+                            print(f"  • {gap_type}: {count}")
+                
+                if summary.get('avg_severity'):
+                    print(f"\nAverage Gap Severity: {summary['avg_severity']:.0%}")
+                
+                # Show top gaps
+                if not args.no_gaps and analysis['gaps']:
+                    print(f"\n=== Top Knowledge Gaps ===\n")
+                    for i, gap in enumerate(analysis['gaps'][:5], 1):
+                        print(f"{i}. [{gap['type']}] {gap['title']}")
+                        print(f"   Severity: {gap['severity']:.0%} - {gap['description']}\n")
+                
+                # Show clusters
+                if not args.no_clusters and analysis['clusters']:
+                    print(f"=== Topic Clusters ===\n")
+                    for i, cluster in enumerate(analysis['clusters'][:5], 1):
+                        print(f"{i}. {cluster['name']} ({cluster['size']} notes)")
+                        print(f"   Keywords: {', '.join(cluster['keywords'][:5])}")
+                        print(f"   Density: {cluster['density']:.0%}, Coverage: {cluster['coverage']:.0%}\n")
+                
+                # Show learning paths
+                if not args.no_paths and analysis['learning_paths']:
+                    print(f"=== Learning Paths ===\n")
+                    for i, path in enumerate(analysis['learning_paths'][:3], 1):
+                        print(f"{i}. {path['topic']} ({path['order']} path)")
+                        print(f"   Completeness: {path['completeness']:.0%}")
+                        print(f"   Notes: {len(path['notes'])}")
+                        if path['missing_steps']:
+                            print(f"   Missing: {', '.join(path['missing_steps'][:2])}\n")
+                        else:
+                            print()
+        
+        asyncio.run(_analyze())
         return
 
 

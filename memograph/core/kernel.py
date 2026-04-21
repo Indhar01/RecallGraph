@@ -1390,7 +1390,7 @@ class MemoryKernel:
             cache_key = f"{query}|{tags}|{depth}|{top_k}"
             self.query_cache.put(cache_key, results)
 
-            return results
+        return results
 
     def query(self) -> MemoryQuery:
         """

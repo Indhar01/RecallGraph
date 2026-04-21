@@ -13,6 +13,7 @@ from typing import Any
 from ..core.enums import MemoryType
 from ..core.kernel import MemoryKernel
 from .autonomous_hooks import AutonomousHooks
+from .conversation_monitor import ConversationMonitor
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -118,6 +119,38 @@ class MemoGraphMCPServer:
             self.autonomous_hooks.auto_save_responses = True
             logger.info("Autonomous mode enabled via MEMOGRAPH_AUTONOMOUS_MODE")
 
+        # Initialize conversation monitor if enabled (Layer 2 auto-save)
+        monitor_enabled = (
+            os.environ.get("MEMOGRAPH_AUTO_SAVE_MONITOR", "false").lower() == "true"
+        )
+        if monitor_enabled:
+            self.conversation_monitor = ConversationMonitor(
+                kernel=self.kernel,
+                config={
+                    "enabled": True,
+                    "idle_threshold_seconds": int(
+                        os.environ.get("MEMOGRAPH_IDLE_THRESHOLD", "30")
+                    ),
+                    "min_question_length": int(
+                        os.environ.get("MEMOGRAPH_MIN_QUESTION_LENGTH", "10")
+                    ),
+                    "max_buffer_size": int(
+                        os.environ.get("MEMOGRAPH_MAX_BUFFER_SIZE", "50")
+                    ),
+                    "check_interval_seconds": int(
+                        os.environ.get("MEMOGRAPH_CHECK_INTERVAL", "5")
+                    ),
+                },
+            )
+            # Store task reference to prevent garbage collection
+            # Note: Task will be started by start_monitor() after server is fully initialized
+            self._monitor_task = None
+            logger.info("✅ Conversation monitor initialized (Layer 2 auto-save)")
+        else:
+            self.conversation_monitor = None
+            self._monitor_task = None
+            logger.info("ℹ️  Conversation monitor disabled (using Layer 1 only)")
+
         if llm_provider:
             logger.info(
                 f"Initialized MemoGraph MCP server with vault: {self.vault_path}, provider: {llm_provider}"
@@ -174,6 +207,29 @@ class MemoGraphMCPServer:
             "path": str(self.vault_path),
             "name": self.vault_path.name,
         }
+        return response
+
+    def _add_save_notification(
+        self, response: dict[str, Any], layer: str = "unknown"
+    ) -> dict[str, Any]:
+        """Add auto-save notification to response.
+
+        Args:
+            response: Original response
+            layer: Which layer saved ('layer1', 'layer2', 'unknown')
+
+        Returns:
+            Response with notification added
+        """
+        notifications = {
+            "layer1": "💾 Saved by: You (Layer 1 explicit save)",
+            "layer2": "🤖 Saved by: Monitor (Layer 2 automatic backup)",
+            "unknown": "💾 Conversation saved",
+        }
+
+        response["auto_save_notification"] = notifications.get(
+            layer, notifications["unknown"]
+        )
         return response
 
     def get_server_info(self) -> dict[str, Any]:
@@ -294,13 +350,23 @@ class MemoGraphMCPServer:
                 for node in results
             ]
 
-            return self._add_vault_context(
+            result = self._add_vault_context(
                 {
                     "success": True,
                     "count": len(formatted_results),
                     "results": formatted_results,
                 }
             )
+
+            # Record for conversation monitor
+            if self.conversation_monitor:
+                self.conversation_monitor.record_tool_call(
+                    tool_name="search_vault",
+                    args={"query": query, "tags": tags, "top_k": top_k},
+                    result=result,
+                )
+
+            return result
 
         except Exception as e:
             logger.error(f"Error searching vault: {e}")
@@ -390,7 +456,7 @@ class MemoGraphMCPServer:
 
             # Already limited to 5 in loop above
 
-            return self._add_vault_context(
+            result = self._add_vault_context(
                 {
                     "success": True,
                     "message": f"Created memory: {title}",
@@ -399,6 +465,16 @@ class MemoGraphMCPServer:
                     "suggested_links": suggested_links,
                 }
             )
+
+            # Record for conversation monitor
+            if self.conversation_monitor:
+                self.conversation_monitor.record_tool_call(
+                    tool_name="create_memory",
+                    args={"title": title, "tags": tags, "memory_type": memory_type},
+                    result=result,
+                )
+
+            return result
 
         except Exception as e:
             logger.error(f"Error creating memory: {e}")
@@ -474,7 +550,7 @@ class MemoGraphMCPServer:
                     stream=False,  # No streaming for MCP
                 )
 
-                return self._add_vault_context(
+                result = self._add_vault_context(
                     {
                         "success": True,
                         "answer": answer,
@@ -483,6 +559,16 @@ class MemoGraphMCPServer:
                         "mode": "generated",
                     }
                 )
+
+                # Record for conversation monitor
+                if self.conversation_monitor:
+                    self.conversation_monitor.record_tool_call(
+                        tool_name="query_with_context",
+                        args={"question": question, "tags": tags, "top_k": top_k},
+                        result=result,
+                    )
+
+                return result
 
             # Otherwise, return context for client's LLM to use
             else:
@@ -919,6 +1005,257 @@ class MemoGraphMCPServer:
                 }
             )
 
+    async def suggest_tags(
+        self,
+        content: str,
+        title: str = "",
+        existing_tags: list[str] | None = None,
+        min_confidence: float = 0.3,
+        max_suggestions: int = 5,
+    ) -> dict[str, Any]:
+        """Suggest tags for a note using AI analysis.
+
+        Args:
+            content: Note content to analyze
+            title: Note title (optional)
+            existing_tags: Tags already assigned (optional)
+            min_confidence: Minimum confidence score (0.0-1.0)
+            max_suggestions: Maximum number of suggestions
+
+        Returns:
+            Dictionary with tag suggestions
+        """
+        try:
+            self._check_server_health()
+            from ..ai.auto_tagger import AutoTagger
+
+            tagger = AutoTagger(
+                self.kernel,
+                min_confidence=min_confidence,
+                max_suggestions=max_suggestions,
+            )
+
+            suggestions = await tagger.suggest_tags(
+                content=content,
+                title=title,
+                existing_tags=existing_tags or [],
+            )
+
+            formatted_suggestions = [
+                {
+                    "tag": s.tag,
+                    "confidence": round(s.confidence, 3),
+                    "reason": s.reason,
+                    "source": s.source,
+                }
+                for s in suggestions
+            ]
+
+            return self._add_vault_context(
+                {
+                    "success": True,
+                    "count": len(formatted_suggestions),
+                    "suggestions": formatted_suggestions,
+                }
+            )
+
+        except Exception as e:
+            logger.error(f"Error suggesting tags: {e}")
+            return self._add_vault_context(
+                {
+                    "success": False,
+                    "error": str(e),
+                }
+            )
+
+    async def suggest_links(
+        self,
+        content: str,
+        title: str = "",
+        note_id: str | None = None,
+        existing_links: list[str] | None = None,
+        min_confidence: float = 0.4,
+        max_suggestions: int = 10,
+    ) -> dict[str, Any]:
+        """Suggest wikilinks for a note using semantic similarity and graph analysis.
+        
+        Args:
+            content: Note content to analyze
+            title: Note title (optional)
+            note_id: Note ID for graph-based suggestions (optional)
+            existing_links: Links already in the note (optional)
+            min_confidence: Minimum confidence score (0.0-1.0)
+            max_suggestions: Maximum number of suggestions
+        
+        Returns:
+            Dictionary with link suggestions
+        """
+        try:
+            self._check_server_health()
+            from ..ai.link_suggester import LinkSuggester
+            
+            suggester = LinkSuggester(
+                self.kernel,
+                min_confidence=min_confidence,
+                max_suggestions=max_suggestions,
+            )
+            
+            suggestions = await suggester.suggest_links(
+                content=content,
+                title=title,
+                note_id=note_id,
+                existing_links=existing_links or [],
+            )
+            
+            formatted_suggestions = [
+                {
+                    "target_title": s.target_title,
+                    "target_id": s.target_id,
+                    "confidence": round(s.confidence, 3),
+                    "reason": s.reason,
+                    "source": s.source,
+                    "bidirectional": s.bidirectional,
+                }
+                for s in suggestions
+            ]
+            
+            return self._add_vault_context(
+                {
+                    "success": True,
+                    "count": len(formatted_suggestions),
+                    "suggestions": formatted_suggestions,
+                }
+            )
+        
+        except Exception as e:
+            logger.error(f"Error suggesting links: {e}")
+            return self._add_vault_context(
+                {
+                    "success": False,
+                    "error": str(e),
+                }
+            )
+    
+    async def detect_knowledge_gaps(
+        self,
+        min_severity: float = 0.3,
+        max_gaps: int = 20,
+        gap_types: list[str] | None = None,
+    ) -> dict[str, Any]:
+        """Detect knowledge gaps in the vault.
+        
+        Args:
+            min_severity: Minimum severity threshold (0.0-1.0)
+            max_gaps: Maximum number of gaps to return
+            gap_types: Specific gap types to detect (optional):
+                      ['missing_topic', 'weak_coverage', 'isolated_note', 'missing_link']
+        
+        Returns:
+            Dictionary with detected gaps
+        """
+        try:
+            self._check_server_health()
+            from ..ai.gap_detector import GapDetector
+            
+            detector = GapDetector(
+                self.kernel,
+                min_severity=min_severity,
+                max_gaps=max_gaps,
+            )
+            
+            gaps = await detector.detect_gaps()
+            
+            # Filter by gap types if specified
+            if gap_types:
+                gaps = [g for g in gaps if g.gap_type in gap_types]
+            
+            formatted_gaps = [
+                {
+                    "type": g.gap_type,
+                    "title": g.title,
+                    "description": g.description,
+                    "severity": round(g.severity, 2),
+                    "suggestions": g.suggestions,
+                    "related_notes": g.related_notes[:5],  # Limit to 5
+                }
+                for g in gaps
+            ]
+            
+            return self._add_vault_context(
+                {
+                    "success": True,
+                    "count": len(formatted_gaps),
+                    "gaps": formatted_gaps,
+                    "summary": {
+                        "total_gaps": len(formatted_gaps),
+                        "by_type": {
+                            gap_type: len([g for g in gaps if g.gap_type == gap_type])
+                            for gap_type in ["missing_topic", "weak_coverage", "isolated_note", "missing_link"]
+                        },
+                        "avg_severity": sum(g.severity for g in gaps) / len(gaps) if gaps else 0.0,
+                    }
+                }
+            )
+        
+        except Exception as e:
+            logger.error(f"Error detecting knowledge gaps: {e}")
+            return self._add_vault_context(
+                {
+                    "success": False,
+                    "error": str(e),
+                }
+            )
+    
+    async def analyze_knowledge_base(
+        self,
+        include_gaps: bool = True,
+        include_clusters: bool = True,
+        include_paths: bool = True,
+    ) -> dict[str, Any]:
+        """Perform comprehensive knowledge base analysis.
+        
+        Args:
+            include_gaps: Include gap detection
+            include_clusters: Include topic clustering
+            include_paths: Include learning path suggestions
+        
+        Returns:
+            Dictionary with comprehensive analysis
+        """
+        try:
+            self._check_server_health()
+            from ..ai.gap_detector import GapDetector
+            
+            detector = GapDetector(self.kernel)
+            analysis = await detector.analyze_knowledge_base()
+            
+            # Filter based on requested components
+            if not include_gaps:
+                analysis['gaps'] = []
+                analysis['summary']['total_gaps'] = 0
+            if not include_clusters:
+                analysis['clusters'] = []
+                analysis['summary']['total_clusters'] = 0
+            if not include_paths:
+                analysis['learning_paths'] = []
+                analysis['summary']['total_paths'] = 0
+            
+            return self._add_vault_context(
+                {
+                    "success": True,
+                    "analysis": analysis,
+                }
+            )
+        
+        except Exception as e:
+            logger.error(f"Error analyzing knowledge base: {e}")
+            return self._add_vault_context(
+                {
+                    "success": False,
+                    "error": str(e),
+                }
+            )
+
     async def list_available_tools(self) -> dict[str, Any]:
         """List all available MCP tools with descriptions.
 
@@ -960,6 +1297,12 @@ class MemoGraphMCPServer:
                         "find_path",
                     ],
                     "bulk": ["bulk_create"],
+                    "ai": [
+                        "suggest_tags",
+                        "suggest_links",
+                        "detect_knowledge_gaps",
+                        "analyze_knowledge_base",
+                    ],
                 },
             }
         except Exception as e:
@@ -1304,6 +1647,120 @@ class MemoGraphMCPServer:
         """
         return self.autonomous_hooks.get_configuration()
 
+    async def verify_last_save(
+        self,
+        time_window_seconds: int = 60,
+        conversation_only: bool = True,
+    ) -> dict[str, Any]:
+        """Verify if a recent conversation was saved.
+
+        Args:
+            time_window_seconds: How far back to check in seconds
+            conversation_only: Only check conversation memories
+
+        Returns:
+            Dictionary with verification result
+        """
+        return await self.autonomous_hooks.verify_last_save(
+            time_window_seconds=time_window_seconds,
+            conversation_only=conversation_only,
+        )
+
+    async def get_save_stats(self, period: str = "session") -> dict[str, Any]:
+        """Get statistics about save success rate.
+
+        Args:
+            period: Time period to analyze ('session', 'hour', 'day', 'week', 'all')
+
+        Returns:
+            Dictionary with save statistics
+        """
+        return await self.autonomous_hooks.get_save_stats(period=period)
+
+    async def get_auto_save_analytics(
+        self, period: str = "day", include_recommendations: bool = True
+    ) -> dict[str, Any]:
+        """Get comprehensive auto-save analytics.
+
+        Args:
+            period: 'hour', 'day', 'week', or 'all'
+            include_recommendations: Whether to include recommendations
+
+        Returns:
+            Analytics dictionary
+        """
+        return await self.autonomous_hooks.get_auto_save_analytics(
+            period, include_recommendations
+        )
+
+    async def get_monitor_status(self) -> dict[str, Any]:
+        """Get status of the conversation monitor (Layer 2).
+
+        Returns:
+            Dictionary with monitor status and diagnostics
+        """
+        try:
+            if not self.conversation_monitor:
+                return {
+                    "success": True,
+                    "monitor_enabled": False,
+                    "message": "Conversation monitor (Layer 2) is not enabled. Set MEMOGRAPH_AUTO_SAVE_MONITOR=true to enable.",
+                    "recommendation": "Layer 2 provides backup auto-save for missed conversations. Enable it for better coverage.",
+                }
+
+            stats = self.conversation_monitor.get_stats()
+
+            # Check if monitor is actually detecting activity
+            has_activity = stats.get("last_activity") is not None
+            is_detecting = stats.get("total_detected", 0) > 0
+
+            status = "active" if has_activity and is_detecting else "idle"
+            if not has_activity:
+                status = "inactive"
+
+            return {
+                "success": True,
+                "monitor_enabled": True,
+                "status": status,
+                "statistics": stats,
+                "diagnostics": {
+                    "background_loop_running": True,  # If we got here, it's running
+                    "detecting_conversations": is_detecting,
+                    "has_recent_activity": has_activity,
+                },
+                "message": f"Monitor is {status}. Detected {stats.get('total_detected', 0)} conversations, saved {stats.get('saved', 0)}.",
+            }
+
+        except Exception as e:
+            logger.error(f"Error getting monitor status: {e}")
+            return {
+                "success": False,
+                "error": str(e),
+            }
+
+    def start_monitor(self) -> None:
+        """Start the conversation monitor background task.
+
+        This must be called from an async context after __init__.
+        """
+        if self.conversation_monitor and not self._monitor_task:
+            import asyncio
+
+            self._monitor_task = asyncio.create_task(
+                self.conversation_monitor.monitor_loop()
+            )
+            logger.info("✅ Conversation monitor background task started")
+
+    async def stop_monitor(self) -> None:
+        """Stop the conversation monitor gracefully."""
+        if self._monitor_task and not self._monitor_task.done():
+            self._monitor_task.cancel()
+            try:
+                await self._monitor_task
+            except asyncio.CancelledError:
+                pass
+            logger.info("Conversation monitor stopped")
+
     def get_tools_schema(self) -> list[dict[str, Any]]:
         """Get MCP tools schema for registration.
 
@@ -1553,7 +2010,15 @@ class MemoGraphMCPServer:
             },
             {
                 "name": "auto_hook_query",
-                "description": "Autonomous hook for user queries - automatically searches vault and provides context. Call this at the START of every user interaction to get relevant context automatically.",
+                "description": (
+                    "🔍 AUTO-SEARCH VAULT - Call at the START of a conversation to search for relevant context.\n\n"
+                    "⚠️ NOTE: Usually it's better to just use 'search_vault' or 'query_with_context' directly.\n\n"
+                    "This tool:\n"
+                    "1. Searches the vault for relevant memories\n"
+                    "2. Optionally saves the query itself (usually disabled)\n"
+                    "3. Returns context and sources\n\n"
+                    "Most users don't need this - use 'search_vault' instead."
+                ),
                 "inputSchema": {
                     "type": "object",
                     "properties": {
@@ -1579,7 +2044,25 @@ class MemoGraphMCPServer:
             },
             {
                 "name": "auto_hook_response",
-                "description": "Autonomous hook for AI responses - saves the complete interaction. Call this at the END of every user interaction to save the conversation automatically.",
+                "description": (
+                    "💾 SAVE CONVERSATION - Call this IMMEDIATELY after answering to save our exchange.\n\n"
+                    "⚠️ IMPORTANT: This tool is NOT automatic - you must explicitly call it after each meaningful exchange.\n\n"
+                    "✅ WHEN TO CALL:\n"
+                    "- After answering questions\n"
+                    "- After providing insights or advice\n"
+                    "- After planning or decision-making conversations\n"
+                    "- After any exchange worth remembering\n\n"
+                    "❌ SKIP FOR:\n"
+                    "- Simple greetings ('hi', 'hello')\n"
+                    "- Acknowledgments ('ok', 'thanks')\n"
+                    "- Clarification questions\n\n"
+                    "📝 USAGE:\n"
+                    "auto_hook_response(\n"
+                    "    user_query='User's question here',\n"
+                    "    ai_response='Your complete answer here'\n"
+                    ")\n\n"
+                    "This builds conversation history for future reference."
+                ),
                 "inputSchema": {
                     "type": "object",
                     "properties": {
@@ -1749,6 +2232,218 @@ class MemoGraphMCPServer:
                         },
                     },
                     "required": ["memories"],
+                },
+            },
+            {
+                "name": "verify_last_save",
+                "description": (
+                    "🔍 VERIFY AUTO-SAVE - Check if your last conversation was saved.\n\n"
+                    "Use this to:\n"
+                    "- Confirm auto-save is working\n"
+                    "- Debug save issues\n"
+                    "- Get peace of mind that exchanges are being preserved\n\n"
+                    "Returns details about the most recent save or troubleshooting tips if none found."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "time_window_seconds": {
+                            "type": "number",
+                            "description": "How far back to check in seconds (default: 60)",
+                            "default": 60,
+                        },
+                        "conversation_only": {
+                            "type": "boolean",
+                            "description": "Only check conversation memories (default: true)",
+                            "default": True,
+                        },
+                    },
+                },
+            },
+            {
+                "name": "get_save_stats",
+                "description": (
+                    "📊 SAVE STATISTICS - Get statistics about auto-save success rate.\n\n"
+                    "Shows:\n"
+                    "- How many saves have succeeded vs failed\n"
+                    "- Save rate percentage\n"
+                    "- Memory counts by type\n"
+                    "- Status interpretation (excellent/good/poor/critical)\n\n"
+                    "Helps you understand if auto-save is working effectively."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "period": {
+                            "type": "string",
+                            "enum": ["session", "hour", "day", "week", "all"],
+                            "description": "Time period to analyze (default: session)",
+                            "default": "session",
+                        },
+                    },
+                },
+            },
+            {
+                "name": "get_auto_save_analytics",
+                "description": (
+                    "📊 AUTO-SAVE ANALYTICS - Get comprehensive analytics on the hybrid auto-save system.\n\n"
+                    "Shows detailed metrics:\n"
+                    "- Overall save rate and performance grade (A+ to F)\n"
+                    "- Layer 1 (explicit AI saves) vs Layer 2 (monitor) breakdown\n"
+                    "- Total conversations saved vs estimated missed\n"
+                    "- Monitor statistics (if enabled)\n"
+                    "- Actionable recommendations for improvement\n\n"
+                    "Use this to understand auto-save effectiveness and optimize configuration."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "period": {
+                            "type": "string",
+                            "enum": ["hour", "day", "week", "all"],
+                            "description": "Time period for analytics (default: day)",
+                            "default": "day",
+                        },
+                        "include_recommendations": {
+                            "type": "boolean",
+                            "description": "Include improvement recommendations (default: true)",
+                            "default": True,
+                        },
+                    },
+                },
+            },
+            {
+                "name": "get_monitor_status",
+                "description": (
+                    "🔍 MONITOR DIAGNOSTICS - Check if Layer 2 conversation monitor is running.\n\n"
+                    "Shows:\n"
+                    "- Whether monitor is enabled and active\n"
+                    "- Detection statistics\n"
+                    "- Background loop status\n"
+                    "- Recent activity\n\n"
+                    "Use this to diagnose why auto-save isn't working."
+                ),
+                "inputSchema": {"type": "object", "properties": {}},
+            },
+            {
+                "name": "suggest_tags",
+                "description": "Suggest tags for a note using AI analysis. Analyzes content using frequency, semantic similarity, structure, and related notes to recommend relevant tags.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "content": {
+                            "type": "string",
+                            "description": "Note content to analyze",
+                        },
+                        "title": {
+                            "type": "string",
+                            "description": "Note title (optional)",
+                        },
+                        "existing_tags": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "Tags already assigned to the note (optional)",
+                        },
+                        "min_confidence": {
+                            "type": "number",
+                            "description": "Minimum confidence score 0.0-1.0 (default: 0.3)",
+                            "default": 0.3,
+                        },
+                        "max_suggestions": {
+                            "type": "integer",
+                            "description": "Maximum number of suggestions (default: 5)",
+                            "default": 5,
+                        },
+                    },
+                    "required": ["content"],
+                },
+            },
+            {
+                "name": "suggest_links",
+                "description": "Suggest wikilinks for a note using semantic similarity and graph analysis. Analyzes content, graph relationships, and context to recommend relevant connections to other notes. Includes bidirectional link suggestions (notes that should link to this one).",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "content": {
+                            "type": "string",
+                            "description": "Note content to analyze",
+                        },
+                        "title": {
+                            "type": "string",
+                            "description": "Note title (optional)",
+                        },
+                        "note_id": {
+                            "type": "string",
+                            "description": "Note ID for graph-based suggestions (optional)",
+                        },
+                        "existing_links": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "Links already in the note to exclude (optional)",
+                        },
+                        "min_confidence": {
+                            "type": "number",
+                            "description": "Minimum confidence score 0.0-1.0 (default: 0.4)",
+                            "default": 0.4,
+                        },
+                        "max_suggestions": {
+                            "type": "integer",
+                            "description": "Maximum number of suggestions (default: 10)",
+                            "default": 10,
+                        },
+                    },
+                    "required": ["content"],
+                },
+            },
+            {
+                "name": "detect_knowledge_gaps",
+                "description": "Detect knowledge gaps in the vault including missing topics, weak coverage, isolated notes, and missing links. Provides actionable suggestions for improving the knowledge base structure and completeness.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "min_severity": {
+                            "type": "number",
+                            "description": "Minimum severity threshold 0.0-1.0 (default: 0.3)",
+                            "default": 0.3,
+                        },
+                        "max_gaps": {
+                            "type": "integer",
+                            "description": "Maximum number of gaps to return (default: 20)",
+                            "default": 20,
+                        },
+                        "gap_types": {
+                            "type": "array",
+                            "items": {
+                                "type": "string",
+                                "enum": ["missing_topic", "weak_coverage", "isolated_note", "missing_link"],
+                            },
+                            "description": "Specific gap types to detect (optional). Options: missing_topic, weak_coverage, isolated_note, missing_link",
+                        },
+                    },
+                },
+            },
+            {
+                "name": "analyze_knowledge_base",
+                "description": "Perform comprehensive knowledge base analysis including gap detection, topic clustering, and learning path suggestions. Provides insights into the structure, completeness, and organization of the knowledge base with actionable recommendations.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "include_gaps": {
+                            "type": "boolean",
+                            "description": "Include gap detection analysis (default: true)",
+                            "default": True,
+                        },
+                        "include_clusters": {
+                            "type": "boolean",
+                            "description": "Include topic clustering analysis (default: true)",
+                            "default": True,
+                        },
+                        "include_paths": {
+                            "type": "boolean",
+                            "description": "Include learning path suggestions (default: true)",
+                            "default": True,
+                        },
+                    },
                 },
             },
         ]

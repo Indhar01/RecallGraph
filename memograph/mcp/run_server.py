@@ -47,6 +47,17 @@ logger = logging.getLogger(__name__)
 # Global MemoGraph server instance
 memograph_server: MemoGraphMCPServer | None = None
 
+# Conversation context tracking for auto-save
+conversation_context: dict[str, Any] = {
+    "last_user_query": None,
+    "last_tool_call": None,
+    "last_result": None,
+    "auto_save_enabled": os.environ.get(
+        "MEMOGRAPH_AUTO_SAVE_AFTER_QUERY", "false"
+    ).lower()
+    == "true",
+}
+
 
 async def handle_list_tools() -> list[Tool]:
     """List available tools."""
@@ -77,10 +88,101 @@ async def handle_call_tool(name: str, arguments: dict[str, Any]) -> list[TextCon
         # Route to appropriate handler
         if name == "search_vault":
             result = await memograph_server.search_vault(**arguments)
+
+            # Auto-save conversation if enabled and search was successful
+            if conversation_context["auto_save_enabled"] and result.get("success"):
+                try:
+                    query = arguments.get("query", "")
+                    memories = result.get("memories", [])
+
+                    # Only auto-save if we have meaningful search
+                    if query and len(query) >= 10 and memories:
+                        logger.info(f"🤖 Auto-saving conversation after search_vault")
+
+                        # Format memories as context
+                        context = "\n\n".join(
+                            [
+                                f"**{m.get('title', 'Untitled')}**\n{m.get('content', '')[:200]}..."
+                                for m in memories[:3]
+                            ]
+                        )
+
+                        sources = [
+                            {"id": m.get("id"), "title": m.get("title")}
+                            for m in memories[:5]
+                        ]
+
+                        # Trigger auto_hook_response automatically
+                        auto_save_result = await memograph_server.autonomous_hooks.auto_hook_response(
+                            user_query=query,
+                            ai_response=f"Found {len(memories)} relevant memories:\n\n{context}",
+                            sources_used=sources,
+                            conversation_id=None,
+                            auto_save=True,
+                        )
+
+                        result["auto_saved"] = auto_save_result.get("saved", False)
+                        result["auto_save_message"] = auto_save_result.get(
+                            "message", ""
+                        )
+
+                        if auto_save_result.get("saved"):
+                            logger.info(f"✅ Auto-save successful")
+
+                except Exception as e:
+                    logger.error(f"❌ Auto-save error: {e}")
+                    result["auto_save_error"] = str(e)
+
         elif name == "create_memory":
             result = await memograph_server.create_memory(**arguments)
         elif name == "query_with_context":
             result = await memograph_server.query_with_context(**arguments)
+
+            # Auto-save conversation if enabled
+            if conversation_context["auto_save_enabled"] and result.get("success"):
+                try:
+                    question = arguments.get("question", "")
+                    context = result.get("context", "")
+                    sources = result.get("sources", [])
+
+                    # Only auto-save if we have meaningful content
+                    if question and len(question) >= 10:
+                        logger.info(
+                            f"🤖 Auto-saving conversation after query_with_context"
+                        )
+
+                        # Trigger auto_hook_response automatically
+                        auto_save_result = (
+                            await memograph_server.autonomous_hooks.auto_hook_response(
+                                user_query=question,
+                                ai_response=context
+                                if context
+                                else "Context retrieved from vault",
+                                sources_used=sources,
+                                conversation_id=None,
+                                auto_save=True,
+                            )
+                        )
+
+                        # Add auto-save info to result
+                        result["auto_saved"] = auto_save_result.get("saved", False)
+                        result["auto_save_message"] = auto_save_result.get(
+                            "message", ""
+                        )
+
+                        if auto_save_result.get("saved"):
+                            logger.info(
+                                f"✅ Auto-save successful: {auto_save_result.get('path', 'unknown')}"
+                            )
+                        else:
+                            logger.warning(
+                                f"⚠️ Auto-save failed: {auto_save_result.get('error', 'unknown')}"
+                            )
+
+                except Exception as e:
+                    logger.error(f"❌ Auto-save error: {e}")
+                    # Don't fail the original query if auto-save fails
+                    result["auto_save_error"] = str(e)
         elif name == "get_vault_info":
             result = await memograph_server.get_vault_info()
         elif name == "get_vault_stats":
@@ -105,6 +207,14 @@ async def handle_call_tool(name: str, arguments: dict[str, Any]) -> list[TextCon
             result = await memograph_server.configure_autonomous_mode(**arguments)
         elif name == "get_autonomous_config":
             result = await memograph_server.get_autonomous_config()
+        elif name == "verify_last_save":
+            result = await memograph_server.verify_last_save(**arguments)
+        elif name == "get_save_stats":
+            result = await memograph_server.get_save_stats(**arguments)
+        elif name == "get_auto_save_analytics":
+            result = await memograph_server.get_auto_save_analytics(**arguments)
+        elif name == "get_monitor_status":
+            result = await memograph_server.get_monitor_status()
         elif name == "relate_memories":
             result = await memograph_server.relate_memories(**arguments)
         elif name == "search_by_graph":
@@ -174,6 +284,9 @@ async def run_server(vault_path: str, llm_provider: str, llm_model: str | None):
             llm_model=llm_model,
         )
         logger.info("✓ MemoGraph server initialized successfully")
+
+        # Start monitor after server is fully initialized (must be in async context)
+        memograph_server.start_monitor()
 
     except PermissionError as e:
         logger.error(f"❌ Permission denied: {vault_path} - {e}")
@@ -314,6 +427,37 @@ async def run_server(vault_path: str, llm_provider: str, llm_model: str | None):
                     ),
                 ],
             ),
+            Prompt(
+                name="save-conversation",
+                description="Save a specific conversation exchange to your memory vault",
+                arguments=[
+                    PromptArgument(
+                        name="user_question",
+                        description="The user's question or message",
+                        required=True,
+                    ),
+                    PromptArgument(
+                        name="assistant_response",
+                        description="Your (the assistant's) response",
+                        required=True,
+                    ),
+                ],
+            ),
+            Prompt(
+                name="save-this-conversation",
+                description="Save our current conversation to the vault (simplified - auto-extracts last exchange)",
+            ),
+            Prompt(
+                name="conversation-history",
+                description="Review recent conversation memories saved in the vault",
+                arguments=[
+                    PromptArgument(
+                        name="limit",
+                        description="Number of conversations to show (default: 10)",
+                        required=False,
+                    ),
+                ],
+            ),
         ]
 
     @server.get_prompt()
@@ -431,6 +575,94 @@ async def run_server(vault_path: str, llm_provider: str, llm_model: str | None):
                 ]
             )
 
+        elif name == "save-conversation":
+            user_question = arguments.get("user_question", "")
+            assistant_response = arguments.get("assistant_response", "")
+
+            if not user_question or not assistant_response:
+                raise ValueError(
+                    "Both user_question and assistant_response are required"
+                )
+
+            return GetPromptResult(
+                messages=[
+                    PromptMessage(
+                        role="user",
+                        content=TextContent(
+                            type="text",
+                            text=(
+                                f"Save this conversation to my vault using the auto_hook_response tool:\n\n"
+                                f"User: {user_question}\n\n"
+                                f"Assistant: {assistant_response}\n\n"
+                                f"Call auto_hook_response with these as parameters."
+                            ),
+                        ),
+                    )
+                ]
+            )
+
+        elif name == "save-this-conversation":
+            return GetPromptResult(
+                messages=[
+                    PromptMessage(
+                        role="user",
+                        content=TextContent(
+                            type="text",
+                            text=(
+                                "Please save our most recent conversation exchange to my memory vault.\n\n"
+                                "Use the auto_hook_response tool with:\n"
+                                "- user_query: my last question to you\n"
+                                "- ai_response: your complete answer\n\n"
+                                "This builds our conversation history for future reference."
+                            ),
+                        ),
+                    )
+                ]
+            )
+
+        elif name == "conversation-history":
+            limit = int(arguments.get("limit", 10))
+
+            # List recent conversation memories
+            nodes = memograph_server.kernel.graph.get_by_tags(
+                ["conversation", "interaction"],
+                match_all=False,
+            )
+            nodes.sort(key=lambda n: n.created_at or "", reverse=True)
+            recent = nodes[:limit]
+
+            if not recent:
+                content = "No conversation memories found in vault.\n\nTip: Use auto_hook_response after conversations to save them."
+            else:
+                content = f"# Recent Conversation History ({len(recent)} memories)\n\n"
+                for i, node in enumerate(recent, 1):
+                    date = (
+                        node.created_at.strftime("%Y-%m-%d %H:%M")
+                        if node.created_at
+                        else "Unknown date"
+                    )
+                    preview = (
+                        node.content[:200] + "..."
+                        if len(node.content) > 200
+                        else node.content
+                    )
+                    content += f"## {i}. {node.title}\n"
+                    content += f"**Saved**: {date}\n\n"
+                    content += f"{preview}\n\n"
+                    content += f"---\n\n"
+
+            return GetPromptResult(
+                messages=[
+                    PromptMessage(
+                        role="user",
+                        content=TextContent(
+                            type="text",
+                            text=content,
+                        ),
+                    )
+                ]
+            )
+
         else:
             raise ValueError(f"Unknown prompt: {name}")
 
@@ -441,11 +673,16 @@ async def run_server(vault_path: str, llm_provider: str, llm_model: str | None):
         logger.info(f"Provider: {llm_provider}")
         logger.info("Ready for requests...")
 
-        await server.run(
-            read_stream,
-            write_stream,
-            server.create_initialization_options(),
-        )
+        try:
+            await server.run(
+                read_stream,
+                write_stream,
+                server.create_initialization_options(),
+            )
+        finally:
+            # Clean up monitor on shutdown
+            if memograph_server:
+                await memograph_server.stop_monitor()
 
 
 def main():

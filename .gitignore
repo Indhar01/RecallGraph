@@ -24,6 +24,8 @@ share/python-wheels/
 MANIFEST
 .roo
 
+docs
+
 # Virtual Environment
 .venv/
 venv/
@@ -39,18 +41,16 @@ env/
 *~
 .DS_Store
 
-# Personal development notes and fix documentation
-IMPROVEMENTS_SUMMARY.md
-archive_2026-03-02/
+# Archived planning documents (completed work)
+archive_planning_docs/
+
+# Personal development notes
 feedback.md
 MIGRATION_TO_RECALLGRAPH.md
 CI_FIX_SUMMARY.md
 CHAT_FEATURES.md
 CHAT_IMPROVEMENTS.md
 TIMEOUT_FIX_SUMMARY.md
-
-docs/
-
 
 .mcpregistry_*
 
@@ -109,3 +109,5 @@ uv.lock
 pre-push.ps1
 
 PRE-PUSH-GUIDE.md
+
+.bobignore

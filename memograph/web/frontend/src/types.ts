@@ -214,3 +214,109 @@ export interface ToastNotification {
   message: string;
   duration?: number;
 }
+
+// ============================================================================
+// AI Features Types
+// ============================================================================
+
+// Tag Suggestions
+export interface TagSuggestionRequest {
+  content: string;
+  title: string;
+  existing_tags?: string[];
+  min_confidence?: number;
+  max_suggestions?: number;
+}
+
+export interface TagSuggestionItem {
+  tag: string;
+  confidence: number;
+  reason: string;
+  source: string;
+}
+
+export interface TagSuggestionResponse {
+  suggestions: TagSuggestionItem[];
+  total: number;
+}
+
+// Link Suggestions
+export interface LinkSuggestionRequest {
+  content: string;
+  title: string;
+  note_id?: string;
+  existing_links?: string[];
+  min_confidence?: number;
+  max_suggestions?: number;
+}
+
+export interface LinkSuggestionItem {
+  target_title: string;
+  target_id: string;
+  confidence: number;
+  reason: string;
+  source: string;
+  bidirectional: boolean;
+}
+
+export interface LinkSuggestionResponse {
+  suggestions: LinkSuggestionItem[];
+  total: number;
+}
+
+// Knowledge Gaps
+export type GapType = 'missing_topic' | 'weak_coverage' | 'isolated_note' | 'missing_link';
+
+export interface KnowledgeGapItem {
+  gap_type: GapType;
+  title: string;
+  description: string;
+  severity: number;
+  suggestions: string[];
+  related_notes: string[];
+}
+
+export interface GapDetectionResponse {
+  gaps: KnowledgeGapItem[];
+  total: number;
+  gap_types: Record<string, number>;
+  avg_severity: number;
+}
+
+// Knowledge Base Analysis
+export interface TopicCluster {
+  topic: string;
+  notes: string[];
+  size: number;
+  cohesion: number;
+}
+
+export interface LearningPath {
+  topic: string;
+  notes: string[];
+  description: string;
+}
+
+export interface KnowledgeBaseAnalysisSummary {
+  total_gaps: number;
+  gap_types: Record<string, number>;
+  avg_severity: number;
+  total_clusters: number;
+  total_paths: number;
+}
+
+export interface KnowledgeBaseAnalysisResponse {
+  summary: KnowledgeBaseAnalysisSummary;
+  gaps: KnowledgeGapItem[];
+  clusters: TopicCluster[];
+  learning_paths: LearningPath[];
+}
+
+// Feedback
+export type FeedbackType = 'tag' | 'link' | 'gap';
+
+export interface FeedbackRequest {
+  feedback_type: FeedbackType;
+  item_id: string;
+  accepted: boolean;
+}

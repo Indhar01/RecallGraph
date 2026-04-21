@@ -23,6 +23,8 @@ A graph-based memory system for LLMs with intelligent retrieval. MemoGraph provi
   - Action items with assignees and deadlines
   - Decisions, questions, and sentiment analysis
   - Risks, ideas, and timeline events
+- **🏷️ AI-Powered Tag Suggestions**: Automatically suggest relevant tags using semantic analysis and content structure detection
+- **🔗 AI-Powered Link Suggestions**: Intelligently recommend wikilinks to related notes using semantic similarity and graph analysis
 - **Graph-Based Memory**: Navigate knowledge using bidirectional wikilinks and backlinks
 - **Hybrid Retrieval**: Combines keyword matching, graph traversal, and optional vector embeddings
 - **Markdown-Native**: Human-readable markdown files with YAML frontmatter
@@ -225,6 +227,16 @@ Once configured, use natural language with your AI assistant:
 
 See **[CONFIG_REFERENCE.md](memograph/mcp/CONFIG_REFERENCE.md)** for complete MCP configuration guide.
 
+### Using Auto-Save Hooks
+
+MemoGraph provides autonomous hooks to save conversations automatically:
+
+- ⚠️ **Important**: Hooks are passive tools - see [Autonomous Hooks Guide](docs/AUTONOMOUS_HOOKS_GUIDE.md) for setup
+- 📝 Quick fix: Add custom instructions to Claude Desktop (instructions in guide)
+- 🔧 Configure with `MEMOGRAPH_AUTONOMOUS_MODE=true`
+
+[Read the full Autonomous Hooks User Guide →](docs/AUTONOMOUS_HOOKS_GUIDE.md)
+
 ## 🎯 CLI Usage
 
 MemoGraph comes with a powerful CLI for managing your vault and chatting with it.
@@ -290,6 +302,113 @@ Check your environment and connection to LLM providers:
 ```bash
 memograph --vault ~/my-vault doctor
 ```
+
+### 🤖 AI Features
+
+MemoGraph includes powerful AI-powered features to enhance your knowledge management workflow. See **[AI Features Guide](docs/guides/AI_FEATURES.md)** for complete documentation.
+
+#### 🏷️ AutoTagger - Intelligent Tag Suggestions
+
+Automatically suggest relevant tags using semantic analysis, content structure, and existing patterns:
+
+```bash
+# Suggest tags for a note
+memograph suggest-tags note.md
+
+# Apply high-confidence suggestions automatically
+memograph suggest-tags note.md --apply
+
+# Adjust confidence threshold and limit
+memograph suggest-tags note.md --min-confidence 0.5 --max-suggestions 10
+```
+
+**Features:** Frequency-based extraction • Semantic similarity • Structure detection • Pattern learning • Confidence scoring
+
+#### 🔗 LinkSuggester - Smart Wikilink Recommendations
+
+Intelligently recommend wikilinks to related notes using semantic similarity and graph analysis:
+
+```bash
+# Suggest links for a note
+memograph suggest-links note.md
+
+# Interactive mode with previews
+memograph suggest-links note.md --interactive
+
+# Show bidirectional link opportunities
+memograph suggest-links note.md --show-bidirectional
+```
+
+**Features:** Semantic search • Keyword matching • Graph-based suggestions • Bidirectional detection • Target previews
+
+#### 🔍 GapDetector - Knowledge Base Analysis
+
+Identify missing topics, weak coverage, and isolated notes in your vault:
+
+```bash
+# Detect all gaps
+memograph detect-gaps
+
+# Focus on high-severity gaps
+memograph detect-gaps --min-severity 0.7
+
+# Export results to JSON
+memograph detect-gaps --output json > gaps.json
+```
+
+**Gap Types:** Missing Topics • Weak Coverage • Isolated Notes • Missing Links
+
+#### 📊 Knowledge Analysis - Comprehensive Insights
+
+Get comprehensive analysis of your entire knowledge base:
+
+```bash
+# Full analysis with all features
+memograph analyze-kb
+
+# Export detailed report
+memograph analyze-kb --export analysis.json
+```
+
+**Analysis Includes:** Vault statistics • Topic clustering • Learning paths • Gap detection • Connection analysis
+
+#### Python API for AI Features
+
+```python
+from memograph import MemoryKernel
+from memograph.ai import AutoTagger, LinkSuggester, GapDetector
+
+kernel = MemoryKernel("~/my-vault")
+kernel.ingest()
+
+# Get tag suggestions
+tagger = AutoTagger(kernel, min_confidence=0.4)
+suggestions = await tagger.suggest_tags(
+    content="Python is great for data science",
+    title="Data Science with Python"
+)
+
+# Get link suggestions
+suggester = LinkSuggester(kernel, min_confidence=0.5)
+links = await suggester.suggest_links(
+    content="Python async programming tutorial",
+    title="Async Python"
+)
+
+# Detect knowledge gaps
+detector = GapDetector(kernel, min_severity=0.5)
+gaps = await detector.detect_gaps()
+
+# Comprehensive analysis
+analysis = await detector.analyze_knowledge_base()
+```
+
+**📖 Complete Documentation:**
+- **[AI Features Guide](docs/guides/AI_FEATURES.md)** - Comprehensive guide with examples
+- **[Web UI Guide](docs/guides/WEB_UI_GUIDE.md)** - Using AI features in the browser
+- **[MCP AI Tools Guide](docs/guides/MCP_AI_TOOLS.md)** - AI features for Claude & Cline
+
+**💡 Use Cases:** Auto-organize notes • Discover connections • Identify gaps • Maintain consistency • Build learning paths
 
 ## 📖 Core Concepts
 
