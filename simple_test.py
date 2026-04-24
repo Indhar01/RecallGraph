@@ -1,21 +1,18 @@
 """Simple test for new CLI commands - no vault operations."""
 
 import subprocess
-import sys
+
 
 def run(cmd):
     """Run command and return success status."""
     try:
         result = subprocess.run(
-            cmd,
-            shell=True,
-            capture_output=True,
-            text=True,
-            timeout=10
+            cmd, shell=True, capture_output=True, text=True, timeout=10
         )
         return result.returncode == 0, result.stdout, result.stderr
     except Exception as e:
         return False, "", str(e)
+
 
 print("🧪 Simple CLI Command Registration Test\n")
 
@@ -23,7 +20,16 @@ print("🧪 Simple CLI Command Registration Test\n")
 print("1️⃣ Testing command registration...")
 success, out, err = run("python -m memograph --help")
 if success:
-    commands = ['batch-create', 'batch-update', 'batch-delete', 'export', 'import-backup', 'backup', 'config', 'stats']
+    commands = [
+        "batch-create",
+        "batch-update",
+        "batch-delete",
+        "export",
+        "import-backup",
+        "backup",
+        "config",
+        "stats",
+    ]
     all_found = all(cmd in out for cmd in commands)
     if all_found:
         print("   ✅ All 8 new commands registered")
@@ -60,7 +66,7 @@ if success1 and success2 and "test_profile" in out2 and success3:
 else:
     print("   ❌ profile commands failed")
 
-print("\n" + "="*50)
+print("\n" + "=" * 50)
 print("✅ Basic command registration tests complete!")
 print("\nAll 8 new commands are properly registered:")
 print("  • batch-create, batch-update, batch-delete")

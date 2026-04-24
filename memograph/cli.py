@@ -10,20 +10,26 @@ from pathlib import Path
 from urllib import error, request
 
 # Fix Windows console encoding for Unicode characters
-if sys.platform == 'win32':
+if sys.platform == "win32":
     try:
-        sys.stdout.reconfigure(encoding='utf-8')
-        sys.stderr.reconfigure(encoding='utf-8')
+        sys.stdout.reconfigure(encoding="utf-8")
+        sys.stderr.reconfigure(encoding="utf-8")
     except (AttributeError, OSError):
         # Fallback for older Python versions or if reconfigure fails
         import codecs
-        sys.stdout = codecs.getwriter('utf-8')(sys.stdout.buffer, 'strict')
-        sys.stderr = codecs.getwriter('utf-8')(sys.stderr.buffer, 'strict')
+
+        sys.stdout = codecs.getwriter("utf-8")(sys.stdout.buffer, "strict")
+        sys.stderr = codecs.getwriter("utf-8")(sys.stderr.buffer, "strict")
 
 from .core.assistant import build_answer_prompt, retrieve_cited_context, run_answer
 from .core.enums import MemoryType
 from .core.kernel import MemoryKernel
-from .cli_helpers import run_update_command, run_delete_command, run_list_command, run_search_command
+from .cli_helpers import (
+    run_update_command,
+    run_delete_command,
+    run_list_command,
+    run_search_command,
+)
 from .cli_batch_helpers import (
     run_batch_create_command,
     run_batch_update_command,
@@ -36,7 +42,6 @@ from .cli_infrastructure_helpers import (
     run_config_command,
     run_stats_command,
 )
-
 
 
 class Spinner:
@@ -457,8 +462,12 @@ def main():
     ingest_parser.add_argument("--force", action="store_true", help="Reindex all files")
 
     remember_parser = subparsers.add_parser("remember", help="Create a new memory note")
-    remember_parser.add_argument("--title", help="Memory title (will prompt if not provided)")
-    remember_parser.add_argument("--content", help="Memory content (will prompt if not provided)")
+    remember_parser.add_argument(
+        "--title", help="Memory title (will prompt if not provided)"
+    )
+    remember_parser.add_argument(
+        "--content", help="Memory content (will prompt if not provided)"
+    )
     remember_parser.add_argument(
         "--type",
         choices=[member.value for member in MemoryType],
@@ -703,21 +712,16 @@ def main():
     )
 
     update_parser = subparsers.add_parser(
-        "update",
-        help="Update existing memory/memories"
+        "update", help="Update existing memory/memories"
     )
 
     # Target selection (mutually exclusive)
     target_group = update_parser.add_mutually_exclusive_group(required=True)
     target_group.add_argument(
-        "memory_id",
-        nargs="?",
-        help="Memory ID to update (e.g., abc-123)"
+        "memory_id", nargs="?", help="Memory ID to update (e.g., abc-123)"
     )
     target_group.add_argument(
-        "--filter",
-        action="store_true",
-        help="Update multiple memories using filters"
+        "--filter", action="store_true", help="Update multiple memories using filters"
     )
 
     # Update fields
@@ -726,227 +730,151 @@ def main():
     update_parser.add_argument(
         "--type",
         choices=[member.value for member in MemoryType],
-        help="New memory type"
+        help="New memory type",
     )
-    update_parser.add_argument(
-        "--salience",
-        type=float,
-        help="New salience (0.0-1.0)"
-    )
-    update_parser.add_argument(
-        "--add-tags",
-        nargs="*",
-        help="Tags to add"
-    )
-    update_parser.add_argument(
-        "--remove-tags",
-        nargs="*",
-        help="Tags to remove"
-    )
-    update_parser.add_argument(
-        "--set-tags",
-        nargs="*",
-        help="Replace all tags"
-    )
+    update_parser.add_argument("--salience", type=float, help="New salience (0.0-1.0)")
+    update_parser.add_argument("--add-tags", nargs="*", help="Tags to add")
+    update_parser.add_argument("--remove-tags", nargs="*", help="Tags to remove")
+    update_parser.add_argument("--set-tags", nargs="*", help="Replace all tags")
 
     # Filter options (when --filter is used)
-    update_parser.add_argument(
-        "--filter-tags",
-        nargs="*",
-        help="Filter by tags"
-    )
+    update_parser.add_argument("--filter-tags", nargs="*", help="Filter by tags")
     update_parser.add_argument(
         "--filter-type",
         choices=[member.value for member in MemoryType],
-        help="Filter by memory type"
+        help="Filter by memory type",
     )
     update_parser.add_argument(
-        "--filter-min-salience",
-        type=float,
-        help="Filter by minimum salience"
+        "--filter-min-salience", type=float, help="Filter by minimum salience"
     )
     update_parser.add_argument(
-        "--filter-max-salience",
-        type=float,
-        help="Filter by maximum salience"
+        "--filter-max-salience", type=float, help="Filter by maximum salience"
     )
 
     # Safety options
     update_parser.add_argument(
-        "--dry-run",
-        action="store_true",
-        help="Preview changes without applying"
+        "--dry-run", action="store_true", help="Preview changes without applying"
     )
     update_parser.add_argument(
-        "--confirm",
-        action="store_true",
-        help="Skip confirmation prompt"
+        "--confirm", action="store_true", help="Skip confirmation prompt"
     )
 
     delete_parser = subparsers.add_parser(
-        "delete",
-        help="Delete existing memory/memories"
+        "delete", help="Delete existing memory/memories"
     )
 
     # Target selection (mutually exclusive)
     delete_target_group = delete_parser.add_mutually_exclusive_group(required=True)
     delete_target_group.add_argument(
-        "memory_id",
-        nargs="?",
-        help="Memory ID to delete (e.g., abc-123)"
+        "memory_id", nargs="?", help="Memory ID to delete (e.g., abc-123)"
     )
     delete_target_group.add_argument(
-        "--filter",
-        action="store_true",
-        help="Delete multiple memories using filters"
+        "--filter", action="store_true", help="Delete multiple memories using filters"
     )
 
     # Filter options (when --filter is used)
-    delete_parser.add_argument(
-        "--filter-tags",
-        nargs="*",
-        help="Filter by tags"
-    )
+    delete_parser.add_argument("--filter-tags", nargs="*", help="Filter by tags")
     delete_parser.add_argument(
         "--filter-type",
         choices=[member.value for member in MemoryType],
-        help="Filter by memory type"
+        help="Filter by memory type",
     )
     delete_parser.add_argument(
-        "--filter-min-salience",
-        type=float,
-        help="Filter by minimum salience"
+        "--filter-min-salience", type=float, help="Filter by minimum salience"
     )
     delete_parser.add_argument(
-        "--filter-max-salience",
-        type=float,
-        help="Filter by maximum salience"
+        "--filter-max-salience", type=float, help="Filter by maximum salience"
     )
 
     # Safety options
     delete_parser.add_argument(
         "--dry-run",
         action="store_true",
-        help="Preview deletions without removing files"
+        help="Preview deletions without removing files",
     )
     delete_parser.add_argument(
-        "--confirm",
-        action="store_true",
-        help="Skip confirmation prompt"
+        "--confirm", action="store_true", help="Skip confirmation prompt"
     )
 
     list_parser = subparsers.add_parser(
-        "list",
-        help="List memories with filtering and formatting options"
+        "list", help="List memories with filtering and formatting options"
     )
 
     # Filter options
     list_parser.add_argument(
         "--tags",
-        type=lambda s: [t.strip() for t in s.split(',')],
-        help="Filter by tags (comma-separated, e.g., python,coding)"
+        type=lambda s: [t.strip() for t in s.split(",")],
+        help="Filter by tags (comma-separated, e.g., python,coding)",
     )
     list_parser.add_argument(
         "--type",
         choices=[member.value for member in MemoryType],
-        help="Filter by memory type"
+        help="Filter by memory type",
     )
     list_parser.add_argument(
-        "--min-salience",
-        type=float,
-        help="Filter by minimum salience"
+        "--min-salience", type=float, help="Filter by minimum salience"
     )
     list_parser.add_argument(
-        "--max-salience",
-        type=float,
-        help="Filter by maximum salience"
+        "--max-salience", type=float, help="Filter by maximum salience"
     )
 
     # Sorting options
     list_parser.add_argument(
         "--sort-by",
         choices=["title", "salience", "type", "created", "modified"],
-        help="Sort by field"
+        help="Sort by field",
     )
     list_parser.add_argument(
-        "--reverse",
-        action="store_true",
-        help="Sort in descending order"
+        "--reverse", action="store_true", help="Sort in descending order"
     )
 
     # Pagination options
-    list_parser.add_argument(
-        "--limit",
-        type=int,
-        help="Maximum number of results"
-    )
-    list_parser.add_argument(
-        "--offset",
-        type=int,
-        help="Number of results to skip"
-    )
+    list_parser.add_argument("--limit", type=int, help="Maximum number of results")
+    list_parser.add_argument("--offset", type=int, help="Number of results to skip")
 
     # Output format
     list_parser.add_argument(
         "--format",
         choices=["table", "json", "csv", "ids"],
         default="table",
-        help="Output format (default: table)"
+        help="Output format (default: table)",
     )
 
     search_parser = subparsers.add_parser(
-        "search",
-        help="Search memories using various strategies"
+        "search", help="Search memories using various strategies"
     )
 
     # Query parameter
-    search_parser.add_argument(
-        "query",
-        help="Search query string"
-    )
+    search_parser.add_argument("query", help="Search query string")
 
     # Search strategy
     search_parser.add_argument(
         "--strategy",
         choices=["keyword", "semantic", "hybrid", "graph"],
         default="hybrid",
-        help="Search strategy (default: hybrid)"
+        help="Search strategy (default: hybrid)",
     )
 
     # Result options
     search_parser.add_argument(
-        "--limit",
-        type=int,
-        default=10,
-        help="Maximum number of results (default: 10)"
+        "--limit", type=int, default=10, help="Maximum number of results (default: 10)"
     )
     search_parser.add_argument(
-        "--min-salience",
-        type=float,
-        help="Minimum salience threshold"
+        "--min-salience", type=float, help="Minimum salience threshold"
     )
     search_parser.add_argument(
-        "--depth",
-        type=int,
-        default=2,
-        help="Graph traversal depth (default: 2)"
+        "--depth", type=int, default=2, help="Graph traversal depth (default: 2)"
     )
 
     # Scoring options
     search_parser.add_argument(
-        "--boost-recent",
-        action="store_true",
-        help="Apply recency boost to scoring"
+        "--boost-recent", action="store_true", help="Apply recency boost to scoring"
     )
     search_parser.add_argument(
-        "--keyword-weight",
-        type=float,
-        help="Weight for keyword scoring (0.0-1.0)"
+        "--keyword-weight", type=float, help="Weight for keyword scoring (0.0-1.0)"
     )
     search_parser.add_argument(
-        "--semantic-weight",
-        type=float,
-        help="Weight for semantic scoring (0.0-1.0)"
+        "--semantic-weight", type=float, help="Weight for semantic scoring (0.0-1.0)"
     )
 
     # Output format
@@ -954,17 +882,13 @@ def main():
         "--format",
         choices=["table", "json", "detailed"],
         default="table",
-        help="Output format (default: table)"
+        help="Output format (default: table)",
     )
     search_parser.add_argument(
-        "--show-scores",
-        action="store_true",
-        help="Show relevance scores in output"
+        "--show-scores", action="store_true", help="Show relevance scores in output"
     )
     search_parser.add_argument(
-        "--show-snippets",
-        action="store_true",
-        help="Show content snippets in output"
+        "--show-snippets", action="store_true", help="Show content snippets in output"
     )
 
     detect_gaps_parser.add_argument(
@@ -1019,202 +943,162 @@ def main():
 
     # Phase 2: Batch Operations
     batch_create_parser = subparsers.add_parser(
-        "batch-create",
-        help="Create multiple memories from JSON or CSV file"
+        "batch-create", help="Create multiple memories from JSON or CSV file"
     )
     batch_create_parser.add_argument(
-        "input_file",
-        help="Path to JSON or CSV file containing memories"
+        "input_file", help="Path to JSON or CSV file containing memories"
     )
     batch_create_parser.add_argument(
         "--format",
         choices=["json", "csv"],
-        help="Input file format (auto-detected if not specified)"
+        help="Input file format (auto-detected if not specified)",
     )
     batch_create_parser.add_argument(
-        "--dry-run",
-        action="store_true",
-        help="Preview memories without creating them"
+        "--dry-run", action="store_true", help="Preview memories without creating them"
     )
     batch_create_parser.add_argument(
         "--auto-ingest",
         action="store_true",
-        help="Automatically run ingest after creation"
+        help="Automatically run ingest after creation",
     )
 
     batch_update_parser = subparsers.add_parser(
-        "batch-update",
-        help="Update multiple memories from file or by filter"
+        "batch-update", help="Update multiple memories from file or by filter"
     )
     batch_update_parser.add_argument(
-        "--input-file",
-        help="Path to JSON/CSV file with updates"
+        "--input-file", help="Path to JSON/CSV file with updates"
     )
-    batch_update_parser.add_argument(
-        "--filter-tags",
-        nargs="*",
-        help="Filter by tags"
-    )
+    batch_update_parser.add_argument("--filter-tags", nargs="*", help="Filter by tags")
     batch_update_parser.add_argument(
         "--filter-type",
         choices=[member.value for member in MemoryType],
-        help="Filter by memory type"
+        help="Filter by memory type",
     )
     batch_update_parser.add_argument(
-        "--set-salience",
-        type=float,
-        help="Set salience for all matched memories"
+        "--set-salience", type=float, help="Set salience for all matched memories"
     )
     batch_update_parser.add_argument(
-        "--add-tags",
-        nargs="*",
-        help="Add tags to all matched memories"
+        "--add-tags", nargs="*", help="Add tags to all matched memories"
     )
     batch_update_parser.add_argument(
-        "--dry-run",
-        action="store_true",
-        help="Preview updates without applying"
+        "--dry-run", action="store_true", help="Preview updates without applying"
     )
     batch_update_parser.add_argument(
-        "--confirm",
-        action="store_true",
-        help="Skip confirmation prompt"
+        "--confirm", action="store_true", help="Skip confirmation prompt"
     )
 
     batch_delete_parser = subparsers.add_parser(
-        "batch-delete",
-        help="Delete multiple memories from file or by filter"
+        "batch-delete", help="Delete multiple memories from file or by filter"
     )
     batch_delete_parser.add_argument(
-        "--input-file",
-        help="Path to file with memory IDs (one per line)"
+        "--input-file", help="Path to file with memory IDs (one per line)"
     )
-    batch_delete_parser.add_argument(
-        "--filter-tags",
-        nargs="*",
-        help="Filter by tags"
-    )
+    batch_delete_parser.add_argument("--filter-tags", nargs="*", help="Filter by tags")
     batch_delete_parser.add_argument(
         "--filter-type",
         choices=[member.value for member in MemoryType],
-        help="Filter by memory type"
+        help="Filter by memory type",
     )
     batch_delete_parser.add_argument(
-        "--older-than",
-        help="Delete memories older than N days (e.g., '90d')"
+        "--older-than", help="Delete memories older than N days (e.g., '90d')"
     )
     batch_delete_parser.add_argument(
         "--dry-run",
         action="store_true",
-        help="Preview deletions without removing files"
+        help="Preview deletions without removing files",
     )
     batch_delete_parser.add_argument(
-        "--confirm",
-        action="store_true",
-        help="Skip confirmation prompt"
+        "--confirm", action="store_true", help="Skip confirmation prompt"
     )
 
     # Phase 3: Infrastructure
     export_parser = subparsers.add_parser(
-        "export",
-        help="Export vault to JSON, CSV, or markdown archive"
+        "export", help="Export vault to JSON, CSV, or markdown archive"
     )
-    export_parser.add_argument(
-        "--output",
-        required=True,
-        help="Output file path"
-    )
+    export_parser.add_argument("--output", required=True, help="Output file path")
     export_parser.add_argument(
         "--format",
         choices=["json", "csv", "markdown", "zip"],
         default="json",
-        help="Export format (default: json)"
+        help="Export format (default: json)",
     )
     export_parser.add_argument(
-        "--filter-tags",
-        nargs="*",
-        help="Export only memories with these tags"
+        "--filter-tags", nargs="*", help="Export only memories with these tags"
     )
     export_parser.add_argument(
-        "--compress",
-        action="store_true",
-        help="Compress output (for json/csv)"
+        "--compress", action="store_true", help="Compress output (for json/csv)"
     )
 
     import_backup_parser = subparsers.add_parser(
-        "import-backup",
-        help="Import memories from backup file"
+        "import-backup", help="Import memories from backup file"
     )
     import_backup_parser.add_argument(
-        "backup_file",
-        help="Path to backup file (JSON or ZIP)"
+        "backup_file", help="Path to backup file (JSON or ZIP)"
     )
     import_backup_parser.add_argument(
         "--merge",
         action="store_true",
-        help="Merge with existing vault (default: replace)"
+        help="Merge with existing vault (default: replace)",
     )
     import_backup_parser.add_argument(
         "--skip-duplicates",
         action="store_true",
-        help="Skip memories that already exist"
+        help="Skip memories that already exist",
     )
 
-    backup_parser = subparsers.add_parser(
-        "backup",
-        help="Create vault backup"
-    )
+    backup_parser = subparsers.add_parser("backup", help="Create vault backup")
     backup_parser.add_argument(
-        "--destination",
-        required=True,
-        help="Backup destination directory"
+        "--destination", required=True, help="Backup destination directory"
     )
     backup_parser.add_argument(
         "--compress",
         action="store_true",
         default=True,
-        help="Compress backup (default: True)"
+        help="Compress backup (default: True)",
     )
     backup_parser.add_argument(
-        "--keep",
-        type=int,
-        default=10,
-        help="Number of backups to keep (default: 10)"
+        "--keep", type=int, default=10, help="Number of backups to keep (default: 10)"
     )
 
     config_parser = subparsers.add_parser(
-        "config",
-        help="Manage configuration settings"
+        "config", help="Manage configuration settings"
     )
-    config_subparsers = config_parser.add_subparsers(dest="config_command", required=True)
-    
-    config_set_parser = config_subparsers.add_parser("set", help="Set configuration value")
+    config_subparsers = config_parser.add_subparsers(
+        dest="config_command", required=True
+    )
+
+    config_set_parser = config_subparsers.add_parser(
+        "set", help="Set configuration value"
+    )
     config_set_parser.add_argument("key", help="Configuration key")
     config_set_parser.add_argument("value", help="Configuration value")
-    
-    config_get_parser = config_subparsers.add_parser("get", help="Get configuration value")
+
+    config_get_parser = config_subparsers.add_parser(
+        "get", help="Get configuration value"
+    )
     config_get_parser.add_argument("key", help="Configuration key")
-    
+
     config_subparsers.add_parser("list", help="List all configuration")
-    
-    config_profile_parser = config_subparsers.add_parser("profile", help="Manage profiles")
-    config_profile_parser.add_argument("action", choices=["create", "use", "list", "delete"])
+
+    config_profile_parser = config_subparsers.add_parser(
+        "profile", help="Manage profiles"
+    )
+    config_profile_parser.add_argument(
+        "action", choices=["create", "use", "list", "delete"]
+    )
     config_profile_parser.add_argument("name", nargs="?", help="Profile name")
 
     stats_parser = subparsers.add_parser(
-        "stats",
-        help="Show vault statistics and insights"
+        "stats", help="Show vault statistics and insights"
     )
     stats_parser.add_argument(
-        "--detailed",
-        action="store_true",
-        help="Show detailed statistics"
+        "--detailed", action="store_true", help="Show detailed statistics"
     )
     stats_parser.add_argument(
         "--format",
         choices=["text", "json"],
         default="text",
-        help="Output format (default: text)"
+        help="Output format (default: text)",
     )
 
     args = parser.parse_args()
@@ -1232,7 +1116,7 @@ def main():
             if not title:
                 print("Error: Title is required")
                 return
-        
+
         content = args.content
         if not content:
             print("Enter memory content (press Ctrl+D or Ctrl+Z when done):")
@@ -1247,7 +1131,7 @@ def main():
             if not content:
                 print("Error: Content is required")
                 return
-        
+
         path = kernel.remember(
             title=title,
             content=content,
@@ -1580,8 +1464,6 @@ def main():
         run_search_command(kernel, args)
         return
 
-
-
     if args.command == "update":
         run_update_command(kernel, args)
         return
@@ -1628,7 +1510,6 @@ def main():
 
     if args.command == "analyze-knowledge":
         import asyncio
-
 
         import json
 

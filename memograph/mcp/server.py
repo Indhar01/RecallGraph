@@ -1567,13 +1567,13 @@ class MemoGraphMCPServer:
         """
         try:
             self._check_server_health()
-            
+
             # Convert to format expected by kernel.update_many
             update_tuples = [
                 (upd["memory_id"], {k: v for k, v in upd.items() if k != "memory_id"})
                 for upd in updates
             ]
-            
+
             updated_ids, errors = self.kernel.update_many(
                 update_tuples, continue_on_error=True
             )
@@ -1611,7 +1611,7 @@ class MemoGraphMCPServer:
         """
         try:
             self._check_server_health()
-            
+
             deleted_ids = []
             errors = []
 
@@ -1677,7 +1677,7 @@ class MemoGraphMCPServer:
         """
         try:
             self._check_server_health()
-            
+
             path = self.kernel.export_vault(
                 output_path=output_path,
                 format=format,  # type: ignore
@@ -1716,7 +1716,7 @@ class MemoGraphMCPServer:
         """
         try:
             self._check_server_health()
-            
+
             stats = self.kernel.import_backup(
                 backup_path=backup_path,
                 merge=merge,
@@ -1753,7 +1753,7 @@ class MemoGraphMCPServer:
         """
         try:
             self._check_server_health()
-            
+
             path = self.kernel.create_backup(
                 destination=destination,
                 compress=compress,

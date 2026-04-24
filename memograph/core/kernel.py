@@ -930,7 +930,7 @@ class MemoryKernel:
         # Create frontmatter
         created_at = datetime.now(timezone.utc).isoformat()
         tags_line = " ".join(f"#{tag}" for tag in normalized_tags)
-        
+
         # Generate unique ID from slug
         memory_id = slug
 

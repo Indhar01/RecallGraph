@@ -454,16 +454,26 @@ def main():
         total = len(results)
 
         for category, result in results.items():
-            status = f"{Colors.GREEN}✓ PASSED{Colors.RESET}" if result else f"{Colors.RED}✗ FAILED{Colors.RESET}"
+            status = (
+                f"{Colors.GREEN}✓ PASSED{Colors.RESET}"
+                if result
+                else f"{Colors.RED}✗ FAILED{Colors.RESET}"
+            )
             print(f"{category}: {status}")
 
-        print(f"\n{Colors.BOLD}Overall: {passed}/{total} test categories passed{Colors.RESET}\n")
+        print(
+            f"\n{Colors.BOLD}Overall: {passed}/{total} test categories passed{Colors.RESET}\n"
+        )
 
         if passed == total:
-            print(f"{Colors.GREEN}{Colors.BOLD}🎉 All CLI commands validated successfully!{Colors.RESET}\n")
+            print(
+                f"{Colors.GREEN}{Colors.BOLD}🎉 All CLI commands validated successfully!{Colors.RESET}\n"
+            )
             return 0
         else:
-            print(f"{Colors.YELLOW}{Colors.BOLD}⚠ Some tests failed or were skipped{Colors.RESET}\n")
+            print(
+                f"{Colors.YELLOW}{Colors.BOLD}⚠ Some tests failed or were skipped{Colors.RESET}\n"
+            )
             return 1
 
     finally:
