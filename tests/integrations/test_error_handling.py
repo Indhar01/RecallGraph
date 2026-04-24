@@ -85,7 +85,7 @@ class TestRetryLogic:
                 raise ConnectionError("Retry me")
             return {"success": True}
 
-        start_time = time.time()
+        _start_time = time.time()
         await sync_manager._retry_with_backoff(
             failing_with_timing,
             max_attempts=4,
@@ -207,7 +207,7 @@ class TestFileLockHandling:
         ):
             # Should retry and eventually succeed
             try:
-                result = await sync_manager._sync_file_with_retry(str(test_file))
+                _result = await sync_manager._sync_file_with_retry(str(test_file))
                 assert attempt_count >= 2
             except Exception:
                 # If it fails, verify it tried multiple times
@@ -244,7 +244,7 @@ class TestRollbackMechanism:
             files.append(test_file)
 
         # Get initial state checkpoint
-        initial_state = sync_manager.state.create_checkpoint()
+        _initial_state = sync_manager.state.create_checkpoint()
 
         # Simulate critical error during batch sync
         with patch.object(sync_manager.kernel, "remember_async") as mock_remember:

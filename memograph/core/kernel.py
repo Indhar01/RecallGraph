@@ -930,8 +930,12 @@ class MemoryKernel:
         # Create frontmatter
         created_at = datetime.now(timezone.utc).isoformat()
         tags_line = " ".join(f"#{tag}" for tag in normalized_tags)
+        
+        # Generate unique ID from slug
+        memory_id = slug
 
         payload = {
+            "id": memory_id,
             "title": title,
             "memory_type": memory_type.value,
             "created": created_at,
@@ -1651,6 +1655,343 @@ class MemoryKernel:
             raise RuntimeError("Retriever is not a GAMRetriever instance")
 
         return self.retriever.get_access_statistics()
+
+    def get_vault_statistics(self, detailed: bool = False) -> dict[str, Any]:
+        """Get comprehensive vault statistics.
+
+        Args:
+            detailed: If True, include detailed breakdowns and top tags
+
+        Returns:
+            Dictionary with vault statistics
+
+        Example:
+            >>> kernel = MemoryKernel(vault_path="./vault")
+            >>> stats = kernel.get_vault_statistics(detailed=True)
+            >>> print(f"Total memories: {stats['total_memories']}")
+        """
+        all_nodes = self.graph.all_nodes()
+
+        if not all_nodes:
+            return {
+                "total_memories": 0,
+                "by_type": {},
+                "by_tag": {},
+                "salience_avg": 0.0,
+                "salience_distribution": {"low": 0, "medium": 0, "high": 0},
+                "total_tags": 0,
+                "total_content_size": 0,
+            }
+
+        stats: dict[str, Any] = {
+            "total_memories": len(all_nodes),
+            "by_type": {},
+            "by_tag": {},
+            "salience_avg": 0.0,
+            "salience_distribution": {"low": 0, "medium": 0, "high": 0},
+            "total_tags": 0,
+            "total_content_size": 0,
+        }
+
+        salience_sum = 0.0
+        all_tags = set()
+
+        for node in all_nodes:
+            mem_type = node.memory_type.value
+            stats["by_type"][mem_type] = stats["by_type"].get(mem_type, 0) + 1
+
+            for tag in node.tags:
+                stats["by_tag"][tag] = stats["by_tag"].get(tag, 0) + 1
+                all_tags.add(tag)
+
+            salience_sum += node.salience
+
+            if node.salience < 0.4:
+                stats["salience_distribution"]["low"] += 1
+            elif node.salience < 0.7:
+                stats["salience_distribution"]["medium"] += 1
+            else:
+                stats["salience_distribution"]["high"] += 1
+
+            stats["total_content_size"] += len(node.content)
+
+        stats["salience_avg"] = salience_sum / len(all_nodes)
+        stats["total_tags"] = len(all_tags)
+
+        if detailed and stats["by_tag"]:
+            top_tags = sorted(
+                stats["by_tag"].items(), key=lambda x: x[1], reverse=True
+            )[:10]
+            stats["top_tags"] = top_tags
+
+        return stats
+
+    def export_vault(
+        self,
+        output_path: str,
+        format: Literal["json", "csv", "zip"] = "json",
+        filter_tags: list[str] | None = None,
+        compress: bool = False,
+    ) -> Path:
+        """Export vault memories to specified format.
+
+        Args:
+            output_path: Path for the export file
+            format: Export format - 'json', 'csv', or 'zip'
+            filter_tags: Optional list of tags to filter memories
+            compress: Whether to compress the output (gzip for json/csv)
+
+        Returns:
+            Path to the created export file
+
+        Example:
+            >>> kernel = MemoryKernel(vault_path="./vault")
+            >>> path = kernel.export_vault("backup.json", format="json")
+        """
+        import csv
+        import gzip
+        import json
+        import zipfile
+
+        output = Path(output_path).expanduser()
+        all_nodes = self.graph.all_nodes()
+
+        if filter_tags:
+            nodes = [n for n in all_nodes if any(tag in n.tags for tag in filter_tags)]
+        else:
+            nodes = all_nodes
+
+        if not nodes:
+            raise ValueError("No memories found to export")
+
+        logger.info(f"Exporting {len(nodes)} memories to {format} format")
+
+        if format == "json":
+            memories_data = [
+                {
+                    "id": n.id,
+                    "title": n.title,
+                    "content": n.content,
+                    "memory_type": n.memory_type.value,
+                    "tags": n.tags,
+                    "salience": n.salience,
+                    "created": n.created_at.isoformat() if n.created_at else None,
+                    "modified": n.modified_at.isoformat() if n.modified_at else None,
+                    "links": n.links,
+                }
+                for n in nodes
+            ]
+            export_data = {
+                "export_date": datetime.now(timezone.utc).isoformat(),
+                "version": "1.0",
+                "count": len(memories_data),
+                "memories": memories_data,
+            }
+            json_str = json.dumps(export_data, indent=2, ensure_ascii=False)
+            if compress:
+                output = output.with_suffix(".json.gz")
+                with gzip.open(output, "wt", encoding="utf-8") as f:
+                    f.write(json_str)
+            else:
+                output.write_text(json_str, encoding="utf-8")
+
+        elif format == "csv":
+            csv_rows = [
+                {
+                    "id": n.id,
+                    "title": n.title,
+                    "content": n.content,
+                    "memory_type": n.memory_type.value,
+                    "tags": ";".join(n.tags),
+                    "salience": n.salience,
+                    "created": n.created_at.isoformat() if n.created_at else "",
+                }
+                for n in nodes
+            ]
+            import io
+
+            csv_buffer = io.StringIO()
+            if csv_rows:
+                writer = csv.DictWriter(csv_buffer, fieldnames=csv_rows[0].keys())
+                writer.writeheader()
+                writer.writerows(csv_rows)
+            csv_content = csv_buffer.getvalue()
+            if compress:
+                output = output.with_suffix(".csv.gz")
+                with gzip.open(output, "wt", encoding="utf-8") as f:
+                    f.write(csv_content)
+            else:
+                output.write_text(csv_content, encoding="utf-8")
+
+        elif format == "zip":
+            with zipfile.ZipFile(output, "w", zipfile.ZIP_DEFLATED) as zipf:
+                for node in nodes:
+                    if node.source_path:
+                        source = Path(node.source_path)
+                        if source.exists():
+                            arcname = source.relative_to(self.vault_path)
+                            zipf.write(source, arcname)
+        else:
+            raise ValueError(f"Unsupported format: {format}")
+
+        logger.info(f"Export complete: {output}")
+        return output
+
+    def import_backup(
+        self,
+        backup_path: str,
+        merge: bool = True,
+        skip_duplicates: bool = False,
+    ) -> dict[str, int]:
+        """Import memories from a backup file.
+
+        Args:
+            backup_path: Path to backup file (JSON, ZIP, or gzipped JSON)
+            merge: If True, merge with existing. If False, clear vault first.
+            skip_duplicates: If True, skip memories that already exist
+
+        Returns:
+            Dictionary with import statistics
+
+        Example:
+            >>> kernel = MemoryKernel(vault_path="./vault")
+            >>> stats = kernel.import_backup("backup.json", merge=True)
+        """
+        import gzip
+        import json
+        import tempfile
+        import zipfile
+
+        backup = Path(backup_path).expanduser()
+        if not backup.exists():
+            raise FileNotFoundError(f"Backup file not found: {backup}")
+
+        logger.info(f"Importing from backup: {backup}")
+        memories = []
+
+        if backup.suffix.lower() == ".zip":
+            with tempfile.TemporaryDirectory() as tmpdir:
+                with zipfile.ZipFile(backup, "r") as zipf:
+                    zipf.extractall(tmpdir)
+                for md_file in Path(tmpdir).rglob("*.md"):
+                    try:
+                        content = md_file.read_text(encoding="utf-8")
+                        if content.startswith("---\n"):
+                            parts = content.split("---\n", 2)
+                            if len(parts) >= 3:
+                                frontmatter = yaml.safe_load(parts[1])
+                                body = parts[2].strip()
+                                memories.append(
+                                    {
+                                        "id": frontmatter.get("id", ""),
+                                        "title": frontmatter.get("title", ""),
+                                        "content": body,
+                                        "memory_type": frontmatter.get(
+                                            "memory_type", "fact"
+                                        ),
+                                        "tags": frontmatter.get("tags", []),
+                                        "salience": frontmatter.get("salience", 0.5),
+                                    }
+                                )
+                    except Exception as e:
+                        logger.warning(f"Failed to parse {md_file}: {e}")
+        else:
+            if backup.suffix.lower() == ".gz":
+                with gzip.open(backup, "rt", encoding="utf-8") as f:
+                    data = json.load(f)
+            else:
+                data = json.loads(backup.read_text(encoding="utf-8"))
+            if isinstance(data, dict) and "memories" in data:
+                memories = data["memories"]
+            elif isinstance(data, list):
+                memories = data
+            else:
+                raise ValueError("Invalid backup format")
+
+        if not memories:
+            raise ValueError("No memories found in backup")
+
+        logger.info(f"Found {len(memories)} memories in backup")
+
+        if not merge:
+            logger.warning("Clearing existing vault (merge=False)")
+            for md_file in self.vault_path.rglob("*.md"):
+                md_file.unlink()
+
+        imported = 0
+        skipped = 0
+        failed = 0
+
+        for memory in memories:
+            try:
+                if skip_duplicates:
+                    memory_id = memory.get("id", "")
+                    if memory_id and self.graph.get(memory_id):
+                        skipped += 1
+                        continue
+                self.remember(
+                    title=memory.get("title", "Untitled"),
+                    content=memory.get("content", ""),
+                    memory_type=MemoryType(memory.get("memory_type", "fact")),
+                    tags=memory.get("tags", []),
+                    salience=memory.get("salience", 0.5),
+                )
+                imported += 1
+            except Exception as e:
+                logger.warning(f"Failed to import memory: {e}")
+                failed += 1
+
+        if imported > 0:
+            logger.info("Rebuilding graph...")
+            self.ingest(force=True)
+
+        logger.info(
+            f"Import complete: {imported} imported, {skipped} skipped, {failed} failed"
+        )
+        return {"imported": imported, "skipped": skipped, "failed": failed}
+
+    def create_backup(
+        self,
+        destination: str,
+        compress: bool = True,
+    ) -> Path:
+        """Create a backup of the vault.
+
+        Args:
+            destination: Destination directory or file path for the backup
+            compress: Whether to create a compressed ZIP backup
+
+        Returns:
+            Path to the created backup
+
+        Example:
+            >>> kernel = MemoryKernel(vault_path="./vault")
+            >>> backup = kernel.create_backup("./backups", compress=True)
+        """
+        import shutil
+        import zipfile
+
+        dest = Path(destination).expanduser()
+        timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+        vault_name = self.vault_path.name
+        backup_name = f"{vault_name}_backup_{timestamp}"
+
+        if compress:
+            backup_path = dest / f"{backup_name}.zip" if dest.is_dir() else dest
+            backup_path.parent.mkdir(parents=True, exist_ok=True)
+            logger.info(f"Creating compressed backup: {backup_path}")
+            with zipfile.ZipFile(backup_path, "w", zipfile.ZIP_DEFLATED) as zipf:
+                for md_file in self.vault_path.rglob("*.md"):
+                    arcname = md_file.relative_to(self.vault_path)
+                    zipf.write(md_file, arcname)
+        else:
+            backup_path = dest / backup_name if dest.is_dir() else dest
+            backup_path.parent.mkdir(parents=True, exist_ok=True)
+            logger.info(f"Creating directory backup: {backup_path}")
+            shutil.copytree(self.vault_path, backup_path, dirs_exist_ok=True)
+
+        logger.info(f"Backup created: {backup_path}")
+        return backup_path
 
     # ==================== Cache Management ====================
 

@@ -277,7 +277,7 @@ class TestIntegration:
         )
 
         # Track sync calls
-        original_sync = sync_manager.sync_single_file
+        _original_sync = sync_manager.sync_single_file
 
         async def tracked_sync(file_path, event_type):
             nonlocal sync_count

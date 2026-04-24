@@ -378,7 +378,7 @@ class TestRealWorldPatterns:
         active_note.rename(archived_note)
 
         # Sync again
-        stats = await sync_engine.pull_from_obsidian()
+        _stats = await sync_engine.pull_from_obsidian()
 
         # Verify note tracked in new location
         sync_engine.kernel.ingest()

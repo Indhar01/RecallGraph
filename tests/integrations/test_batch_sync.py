@@ -204,7 +204,7 @@ class TestProgressTracking:
                 }
             )
 
-        stats = await obsidian_sync.batch_sync(
+        _stats = await obsidian_sync.batch_sync(
             direction="pull",
             progress_callback=progress_callback,
         )
@@ -332,7 +332,7 @@ class TestCancellation:
         def progress_callback(current, total, file_path, status):
             nonlocal progress_checked
             if not progress_checked:
-                progress = obsidian_sync.get_batch_progress()
+                _progress = obsidian_sync.get_batch_progress()
                 # During sync, should show as syncing
                 # Note: _is_syncing may not be set in the current implementation
                 progress_checked = True
@@ -477,7 +477,7 @@ class TestBatchSyncStateTracking:
     @pytest.mark.asyncio
     async def test_batch_sync_updates_state(self, obsidian_sync, create_test_notes):
         """Test that batch sync updates sync state."""
-        notes = create_test_notes(5)
+        _notes = create_test_notes(5)
 
         # Perform batch sync
         await obsidian_sync.batch_sync(direction="pull")

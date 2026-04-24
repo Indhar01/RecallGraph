@@ -58,7 +58,7 @@ class TestObsidianSyncInitialization:
         obs_vault = tmp_path / "obs"
         memo_vault = tmp_path / "memo"
 
-        sync = ObsidianSync(obs_vault, memo_vault)
+        _sync = ObsidianSync(obs_vault, memo_vault)
 
         assert obs_vault.exists()
         assert memo_vault.exists()

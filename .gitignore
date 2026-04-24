@@ -25,6 +25,9 @@ MANIFEST
 .roo
 
 docs
+test_data
+test_vault
+
 
 # Virtual Environment
 .venv/

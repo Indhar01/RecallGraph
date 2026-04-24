@@ -159,7 +159,6 @@ class GapDetector:
         for node in all_nodes:
             title = getattr(node, "title", getattr(node, "id", "Unknown"))
             content = getattr(node, "content", "")
-            node_id = getattr(node, "id", title)
 
             # Analyze content depth
             structure = self.analyzer.analyze_structure(content)
@@ -236,7 +235,7 @@ class GapDetector:
                     node_id, depth=1, include_backlinks=True
                 )
                 connection_count = len(neighbors)
-            except:
+            except Exception:
                 # Fallback: count links and backlinks manually
                 node = self.kernel.graph.get(node_id)
                 if node:
@@ -411,7 +410,7 @@ class GapDetector:
                             actual_connections += len(
                                 neighbor_ids & set(cluster_nodes[i + 1 :])
                             )
-                        except:
+                        except Exception:
                             # Fallback: use links directly
                             node = self.kernel.graph.get(node_id)
                             if node:
@@ -513,7 +512,7 @@ class GapDetector:
                 neighbor_ids = [n.id for n in neighbors_list]
                 if next_id not in neighbor_ids:
                     unconnected.append((linear_path[i][1], linear_path[i + 1][1]))
-            except:
+            except Exception:
                 # Fallback: check links directly
                 node = self.kernel.graph.get(node_id)
                 if node and next_id not in (node.links + node.backlinks):

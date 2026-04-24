@@ -15,6 +15,8 @@
 
 A graph-based memory system for LLMs with intelligent retrieval. MemoGraph provides a powerful solution to the LLM memory problem by combining knowledge graphs, hybrid retrieval, and semantic search.
 
+> **📊 Project Status:** MemoGraph is **production-ready**! See [docs/PROJECT_STATUS.md](docs/PROJECT_STATUS.md) for current status and [docs/FUTURE_ENHANCEMENTS.md](docs/FUTURE_ENHANCEMENTS.md) for optional improvements.
+
 ## ✨ Features
 
 - **🤖 Smart Auto-Organization Engine**: Automatically extract structured information from memories using LLMs
@@ -301,7 +303,92 @@ Check your environment and connection to LLM providers:
 
 ```bash
 memograph --vault ~/my-vault doctor
+
+### Import Documents
+
+Import documents (TXT, PDF, DOCX) and convert them to markdown:
+
+```bash
+# Import a single file
+memograph --vault ~/my-vault import document.pdf --type episodic
+
+# Import entire folder
+memograph --vault ~/my-vault import ~/Documents --recursive
+
+# Preview files without importing (dry run)
+memograph --vault ~/my-vault import ~/Documents --dry-run
+
+# Auto-ingest after import
+memograph --vault ~/my-vault import document.pdf --auto-ingest
 ```
+
+### Batch Operations
+
+Efficiently manage multiple memories at once:
+
+```bash
+# Bulk create memories from JSON/CSV
+memograph --vault ~/my-vault batch-create memories.json
+
+# Bulk update memories by filter
+memograph --vault ~/my-vault batch-update \
+    --filter-tags outdated \
+    --add-tags reviewed \
+    --salience 0.8
+
+# Bulk delete with safety checks
+memograph --vault ~/my-vault batch-delete \
+    --filter-type episodic \
+    --filter-max-salience 0.3 \
+    --dry-run
+```
+
+### Data Management
+
+Export, backup, and restore your vault:
+
+```bash
+# Export vault to JSON/CSV/Markdown
+memograph --vault ~/my-vault export --format json --output backup.json
+
+# Create timestamped backup
+memograph --vault ~/my-vault backup --output ./backups
+
+# Restore from backup
+memograph --vault ~/my-vault import-backup backup.zip
+```
+
+### Configuration & Statistics
+
+Manage settings and view vault analytics:
+
+```bash
+# View vault statistics
+memograph --vault ~/my-vault stats
+
+# Configure settings
+memograph config set embedding_provider openai
+memograph config get embedding_provider
+memograph config list
+
+# Manage profiles
+memograph config profile create work --vault ~/work-vault
+memograph config profile use work
+```
+
+### MCP Setup
+
+Interactive wizard to configure MCP server for Claude Desktop or Cline:
+
+```bash
+# Run interactive setup wizard
+memograph setup-mcp
+
+# Verify MCP configuration
+memograph verify-mcp
+```
+
+**📖 Complete CLI Documentation:** See **[CLI Usage Guide](MEMOGRAPH_CLI_USAGE_GUIDE.md)** for detailed documentation with 200+ examples covering all 24 commands.
 
 ### 🤖 AI Features
 
@@ -332,8 +419,8 @@ Intelligently recommend wikilinks to related notes using semantic similarity and
 # Suggest links for a note
 memograph suggest-links note.md
 
-# Interactive mode with previews
-memograph suggest-links note.md --interactive
+# Apply suggestions automatically
+memograph suggest-links note.md --apply
 
 # Show bidirectional link opportunities
 memograph suggest-links note.md --show-bidirectional
@@ -364,10 +451,10 @@ Get comprehensive analysis of your entire knowledge base:
 
 ```bash
 # Full analysis with all features
-memograph analyze-kb
+memograph analyze-knowledge
 
-# Export detailed report
-memograph analyze-kb --export analysis.json
+# Export detailed report to JSON
+memograph analyze-knowledge --output json > analysis.json
 ```
 
 **Analysis Includes:** Vault statistics • Topic clustering • Learning paths • Gap detection • Connection analysis

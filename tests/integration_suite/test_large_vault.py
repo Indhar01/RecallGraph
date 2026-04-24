@@ -129,7 +129,7 @@ class TestSmallVaultPerformance:
     async def test_sync_10_files_performance(self, sync_engine, performance_vault):
         """Test sync performance with 10 files."""
         # Create vault
-        files = create_test_vault(performance_vault, 10)
+        _files = create_test_vault(performance_vault, 10)
 
         # Measure sync time
         start_time = time.time()
@@ -145,7 +145,7 @@ class TestSmallVaultPerformance:
     @pytest.mark.asyncio
     async def test_sync_50_files_performance(self, sync_engine, performance_vault):
         """Test sync performance with 50 files."""
-        files = create_test_vault(performance_vault, 50)
+        _files = create_test_vault(performance_vault, 50)
 
         start_time = time.time()
         stats = await sync_engine.pull_from_obsidian()
@@ -163,7 +163,7 @@ class TestMediumVaultPerformance:
     @pytest.mark.asyncio
     async def test_sync_100_files_performance(self, sync_engine, performance_vault):
         """Test sync performance with 100 files."""
-        files = create_test_vault(performance_vault, 100)
+        _files = create_test_vault(performance_vault, 100)
 
         # Measure memory before
         mem_before = measure_memory()
@@ -190,7 +190,7 @@ class TestMediumVaultPerformance:
     @pytest.mark.asyncio
     async def test_batch_sync_optimization(self, sync_engine, performance_vault):
         """Test that batch syncing is faster than individual syncs."""
-        files = create_test_vault(performance_vault, 100)
+        _files = create_test_vault(performance_vault, 100)
 
         # Test batch sync
         start_batch = time.time()
@@ -211,7 +211,7 @@ class TestLargeVaultPerformance:
     @pytest.mark.slow  # Mark as slow test
     async def test_sync_1000_files_performance(self, sync_engine, performance_vault):
         """Test sync performance with 1000 files."""
-        files = create_test_vault(performance_vault, 1000)
+        _files = create_test_vault(performance_vault, 1000)
 
         mem_before = measure_memory()
         start_time = time.time()
@@ -299,7 +299,7 @@ class TestMemoryEfficiency:
     async def test_graph_memory_efficiency(self, sync_engine, performance_vault):
         """Test memory efficiency of graph operations."""
         # Create vault
-        files = create_test_vault(performance_vault, 200)
+        _files = create_test_vault(performance_vault, 200)
 
         await sync_engine.batch_sync(direction="pull")
 
@@ -467,7 +467,7 @@ class TestScalingLimits:
     async def test_max_practical_vault_size(self, sync_engine, performance_vault):
         """Test with maximum practical vault size."""
         # Using 500 files for practicality in testing
-        files = create_test_vault(performance_vault, 500)
+        _files = create_test_vault(performance_vault, 500)
 
         mem_before = measure_memory()
         start_time = time.time()
@@ -527,7 +527,7 @@ class TestPerformanceRegression:
     @pytest.mark.asyncio
     async def test_baseline_performance_100_files(self, sync_engine, performance_vault):
         """Establish baseline performance for 100 files."""
-        files = create_test_vault(performance_vault, 100)
+        _files = create_test_vault(performance_vault, 100)
 
         # Run multiple times to get average
         times = []
@@ -535,7 +535,7 @@ class TestPerformanceRegression:
             # Clear state between runs
             for f in performance_vault.glob("*.md"):
                 f.unlink()
-            files = create_test_vault(performance_vault, 100)
+            _files = create_test_vault(performance_vault, 100)
 
             start = time.time()
             await sync_engine.batch_sync(direction="pull")
@@ -557,13 +557,13 @@ class TestPerformanceRegression:
     @pytest.mark.asyncio
     async def test_consistency_across_runs(self, sync_engine, performance_vault):
         """Test that performance is consistent across multiple runs."""
-        files = create_test_vault(performance_vault, 50)
+        _files = create_test_vault(performance_vault, 50)
 
         times = []
         for run in range(5):
             start = time.time()
             # Re-sync same files (should be fast due to caching)
-            stats = await sync_engine.batch_sync(direction="pull")
+            _stats = await sync_engine.batch_sync(direction="pull")
             times.append(time.time() - start)
 
         # After first sync, subsequent syncs should be consistently fast
@@ -589,7 +589,7 @@ class TestResourceCleanup:
         import gc
 
         # Create large vault
-        files = create_test_vault(performance_vault, 200)
+        _files = create_test_vault(performance_vault, 200)
 
         # Measure baseline memory
         gc.collect()

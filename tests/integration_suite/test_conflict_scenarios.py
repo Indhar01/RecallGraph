@@ -89,7 +89,7 @@ class TestObsidianWinsStrategy:
         sync_engine.kernel.ingest()
 
         # Step 4: Sync - Obsidian should win
-        stats = await sync_engine.sync(direction="bidirectional")
+        _stats = await sync_engine.sync(direction="bidirectional")
 
         # Verify Obsidian version preserved
         content = note_path.read_text(encoding="utf-8")

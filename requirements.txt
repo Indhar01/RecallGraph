@@ -1,4 +1,4 @@
-# Core dependencies for mnemo-vault
+# Core dependencies for memograph
 # For installation, prefer: pip install -e .
 # Or with all optional dependencies: pip install -e .[all]
 

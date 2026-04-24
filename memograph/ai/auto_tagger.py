@@ -88,7 +88,7 @@ class AutoTagger:
                 )
                 for tag, cnt in tag_counts.items()
             ]
-        except:
+        except Exception:
             return []
 
     def _merge_suggestions(

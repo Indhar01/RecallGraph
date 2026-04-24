@@ -5,6 +5,7 @@ MemoGraph functionality as tools that can be used by any MCP-compatible
 AI client (Claude Desktop, Cline, etc.).
 """
 
+import asyncio
 import logging
 import os
 from pathlib import Path
@@ -592,41 +593,31 @@ class MemoGraphMCPServer:
                 }
             )
 
-    async def get_vault_stats(self) -> dict[str, Any]:
+    async def get_vault_stats(self, detailed: bool = False) -> dict[str, Any]:
         """Get statistics about the vault.
+
+        Args:
+            detailed: If True, include detailed breakdowns
 
         Returns:
             Dictionary with vault statistics
         """
         try:
             self._check_server_health()
-            # Ingest to get stats
-            stats = self.kernel.ingest(force=False)
+            # Ingest to get indexed/skipped stats
+            ingest_stats = self.kernel.ingest(force=False)
 
-            # Get additional info
-            all_nodes = self.kernel.graph.all_nodes()
+            # Get comprehensive statistics using new method
+            vault_stats = self.kernel.get_vault_statistics(detailed=detailed)
 
-            # Count by type
-            type_counts: dict[str, int] = {}
-            for node in all_nodes:
-                type_name = node.memory_type.value
-                type_counts[type_name] = type_counts.get(type_name, 0) + 1
-
-            # Get all tags
-            all_tags = set()
-            for node in all_nodes:
-                all_tags.update(node.tags)
-
+            # Combine both
             return self._add_vault_context(
                 {
                     "success": True,
                     "vault_path": str(self.vault_path),
-                    "total_memories": stats["total"],
-                    "indexed": stats["indexed"],
-                    "skipped": stats["skipped"],
-                    "by_type": type_counts,
-                    "total_tags": len(all_tags),
-                    "tags": sorted(all_tags),
+                    "indexed": ingest_stats["indexed"],
+                    "skipped": ingest_stats["skipped"],
+                    **vault_stats,
                 }
             )
 
@@ -1562,6 +1553,423 @@ class MemoGraphMCPServer:
             logger.error(f"Error in bulk create: {e}")
             return self._add_vault_context({"success": False, "error": str(e)})
 
+    async def batch_update(
+        self,
+        updates: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        """Update multiple memories in one operation.
+
+        Args:
+            updates: List of update dicts with 'memory_id' and fields to update
+
+        Returns:
+            Dictionary with update results
+        """
+        try:
+            self._check_server_health()
+            
+            # Convert to format expected by kernel.update_many
+            update_tuples = [
+                (upd["memory_id"], {k: v for k, v in upd.items() if k != "memory_id"})
+                for upd in updates
+            ]
+            
+            updated_ids, errors = self.kernel.update_many(
+                update_tuples, continue_on_error=True
+            )
+
+            return self._add_vault_context(
+                {
+                    "success": True,
+                    "updated": len(updated_ids),
+                    "failed": len(errors),
+                    "updated_ids": updated_ids,
+                    "errors": [
+                        {"memory_id": str(mid), "error": str(err)}
+                        for mid, err in errors
+                    ]
+                    if errors
+                    else [],
+                }
+            )
+
+        except Exception as e:
+            logger.error(f"Error in batch update: {e}")
+            return self._add_vault_context({"success": False, "error": str(e)})
+
+    async def batch_delete(
+        self,
+        memory_ids: list[str],
+    ) -> dict[str, Any]:
+        """Delete multiple memories in one operation.
+
+        Args:
+            memory_ids: List of memory IDs to delete
+
+        Returns:
+            Dictionary with deletion results
+        """
+        try:
+            self._check_server_health()
+            
+            deleted_ids = []
+            errors = []
+
+            for memory_id in memory_ids:
+                try:
+                    node = self.kernel.graph.get(memory_id)
+                    if not node or not node.source_path:
+                        errors.append((memory_id, "Memory not found"))
+                        continue
+
+                    memory_path = Path(node.source_path)
+                    if not memory_path.exists():
+                        errors.append((memory_id, "File not found"))
+                        continue
+
+                    memory_path.unlink()
+                    self.kernel.graph.remove_node(memory_id)
+                    deleted_ids.append(memory_id)
+
+                except Exception as e:
+                    errors.append((memory_id, str(e)))
+
+            # Re-ingest if any successful deletions
+            if deleted_ids:
+                self.kernel.ingest(force=False)
+
+            return self._add_vault_context(
+                {
+                    "success": True,
+                    "deleted": len(deleted_ids),
+                    "failed": len(errors),
+                    "deleted_ids": deleted_ids,
+                    "errors": [
+                        {"memory_id": str(mid), "error": str(err)}
+                        for mid, err in errors
+                    ]
+                    if errors
+                    else [],
+                }
+            )
+
+        except Exception as e:
+            logger.error(f"Error in batch delete: {e}")
+            return self._add_vault_context({"success": False, "error": str(e)})
+
+    async def export_vault_tool(
+        self,
+        output_path: str,
+        format: str = "json",
+        filter_tags: list[str] | None = None,
+        compress: bool = False,
+    ) -> dict[str, Any]:
+        """Export vault memories to specified format.
+
+        Args:
+            output_path: Path for the export file
+            format: Export format - 'json', 'csv', or 'zip'
+            filter_tags: Optional list of tags to filter memories
+            compress: Whether to compress the output
+
+        Returns:
+            Dictionary with export result
+        """
+        try:
+            self._check_server_health()
+            
+            path = self.kernel.export_vault(
+                output_path=output_path,
+                format=format,  # type: ignore
+                filter_tags=filter_tags,
+                compress=compress,
+            )
+
+            return self._add_vault_context(
+                {
+                    "success": True,
+                    "message": f"Exported vault to {format} format",
+                    "path": str(path),
+                    "format": format,
+                }
+            )
+
+        except Exception as e:
+            logger.error(f"Error exporting vault: {e}")
+            return self._add_vault_context({"success": False, "error": str(e)})
+
+    async def import_backup_tool(
+        self,
+        backup_path: str,
+        merge: bool = True,
+        skip_duplicates: bool = False,
+    ) -> dict[str, Any]:
+        """Import memories from a backup file.
+
+        Args:
+            backup_path: Path to backup file
+            merge: If True, merge with existing. If False, clear vault first.
+            skip_duplicates: If True, skip memories that already exist
+
+        Returns:
+            Dictionary with import result
+        """
+        try:
+            self._check_server_health()
+            
+            stats = self.kernel.import_backup(
+                backup_path=backup_path,
+                merge=merge,
+                skip_duplicates=skip_duplicates,
+            )
+
+            return self._add_vault_context(
+                {
+                    "success": True,
+                    "message": f"Imported {stats['imported']} memories",
+                    "imported": stats["imported"],
+                    "skipped": stats["skipped"],
+                    "failed": stats["failed"],
+                }
+            )
+
+        except Exception as e:
+            logger.error(f"Error importing backup: {e}")
+            return self._add_vault_context({"success": False, "error": str(e)})
+
+    async def create_backup_tool(
+        self,
+        destination: str,
+        compress: bool = True,
+    ) -> dict[str, Any]:
+        """Create a backup of the vault.
+
+        Args:
+            destination: Destination directory or file path
+            compress: Whether to create compressed ZIP backup
+
+        Returns:
+            Dictionary with backup result
+        """
+        try:
+            self._check_server_health()
+            
+            path = self.kernel.create_backup(
+                destination=destination,
+                compress=compress,
+            )
+
+            return self._add_vault_context(
+                {
+                    "success": True,
+                    "message": f"Backup created at {path}",
+                    "path": str(path),
+                    "compressed": compress,
+                }
+            )
+
+        except Exception as e:
+            logger.error(f"Error creating backup: {e}")
+            return self._add_vault_context({"success": False, "error": str(e)})
+
+    # ==================== Config Management Methods ====================
+
+    async def get_config_value(self, key: str) -> dict[str, Any]:
+        """Get a configuration value.
+
+        Args:
+            key: Configuration key
+
+        Returns:
+            Dictionary with configuration value
+        """
+        try:
+            from ..core.config import MemographConfig
+
+            config = MemographConfig()
+            value = config.get(key)
+
+            return self._add_vault_context(
+                {
+                    "success": True,
+                    "key": key,
+                    "value": value,
+                }
+            )
+
+        except Exception as e:
+            logger.error(f"Error getting config: {e}")
+            return self._add_vault_context({"success": False, "error": str(e)})
+
+    async def set_config_value(self, key: str, value: Any) -> dict[str, Any]:
+        """Set a configuration value.
+
+        Args:
+            key: Configuration key
+            value: Value to set
+
+        Returns:
+            Dictionary with result
+        """
+        try:
+            from ..core.config import MemographConfig
+
+            config = MemographConfig()
+            config.set(key, value)
+
+            return self._add_vault_context(
+                {
+                    "success": True,
+                    "message": f"Set {key} = {value}",
+                    "key": key,
+                    "value": value,
+                }
+            )
+
+        except Exception as e:
+            logger.error(f"Error setting config: {e}")
+            return self._add_vault_context({"success": False, "error": str(e)})
+
+    async def list_config_all(self) -> dict[str, Any]:
+        """List all configuration settings.
+
+        Returns:
+            Dictionary with all configuration
+        """
+        try:
+            from ..core.config import MemographConfig
+
+            config = MemographConfig()
+            all_config = config.list_all()
+
+            return self._add_vault_context(
+                {
+                    "success": True,
+                    "config": all_config,
+                    "active_profile": config.get_active_profile(),
+                }
+            )
+
+        except Exception as e:
+            logger.error(f"Error listing config: {e}")
+            return self._add_vault_context({"success": False, "error": str(e)})
+
+    async def create_profile_config(
+        self, name: str, settings: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Create a configuration profile.
+
+        Args:
+            name: Profile name
+            settings: Profile settings
+
+        Returns:
+            Dictionary with result
+        """
+        try:
+            from ..core.config import MemographConfig
+
+            config = MemographConfig()
+            config.create_profile(name, settings)
+
+            return self._add_vault_context(
+                {
+                    "success": True,
+                    "message": f"Created profile: {name}",
+                    "profile": name,
+                }
+            )
+
+        except Exception as e:
+            logger.error(f"Error creating profile: {e}")
+            return self._add_vault_context({"success": False, "error": str(e)})
+
+    async def use_profile_config(self, name: str) -> dict[str, Any]:
+        """Switch to a configuration profile.
+
+        Args:
+            name: Profile name
+
+        Returns:
+            Dictionary with result
+        """
+        try:
+            from ..core.config import MemographConfig
+
+            config = MemographConfig()
+            config.use_profile(name)
+
+            return self._add_vault_context(
+                {
+                    "success": True,
+                    "message": f"Switched to profile: {name}",
+                    "active_profile": name,
+                }
+            )
+
+        except Exception as e:
+            logger.error(f"Error switching profile: {e}")
+            return self._add_vault_context({"success": False, "error": str(e)})
+
+    async def list_profiles_config(self) -> dict[str, Any]:
+        """List all configuration profiles.
+
+        Returns:
+            Dictionary with profiles list
+        """
+        try:
+            from ..core.config import MemographConfig
+
+            config = MemographConfig()
+            profiles = config.list_profiles()
+            active = config.get_active_profile()
+
+            return self._add_vault_context(
+                {
+                    "success": True,
+                    "profiles": profiles,
+                    "active_profile": active,
+                }
+            )
+
+        except Exception as e:
+            logger.error(f"Error listing profiles: {e}")
+            return self._add_vault_context({"success": False, "error": str(e)})
+
+    async def delete_profile_config(self, name: str) -> dict[str, Any]:
+        """Delete a configuration profile.
+
+        Args:
+            name: Profile name
+
+        Returns:
+            Dictionary with result
+        """
+        try:
+            from ..core.config import MemographConfig
+
+            config = MemographConfig()
+            deleted = config.delete_profile(name)
+
+            if deleted:
+                return self._add_vault_context(
+                    {
+                        "success": True,
+                        "message": f"Deleted profile: {name}",
+                    }
+                )
+            else:
+                return self._add_vault_context(
+                    {
+                        "success": False,
+                        "error": f"Profile not found: {name}",
+                    }
+                )
+
+        except Exception as e:
+            logger.error(f"Error deleting profile: {e}")
+            return self._add_vault_context({"success": False, "error": str(e)})
+
     # ==================== Autonomous Hooks Methods ====================
 
     async def auto_hook_query(
@@ -1751,8 +2159,6 @@ class MemoGraphMCPServer:
         This must be called from an async context after __init__.
         """
         if self.conversation_monitor and not self._monitor_task:
-            import asyncio
-
             self._monitor_task = asyncio.create_task(
                 self.conversation_monitor.monitor_loop()
             )
@@ -2005,6 +2411,215 @@ class MemoGraphMCPServer:
                         },
                     },
                     "required": ["memory_id"],
+                },
+            },
+            {
+                "name": "batch_update",
+                "description": "Update multiple memories in one efficient operation. Much faster than calling update_memory multiple times.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "updates": {
+                            "type": "array",
+                            "description": "List of update objects",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "memory_id": {"type": "string"},
+                                    "title": {"type": "string"},
+                                    "content": {"type": "string"},
+                                    "tags": {
+                                        "type": "array",
+                                        "items": {"type": "string"},
+                                    },
+                                    "salience": {"type": "number"},
+                                },
+                                "required": ["memory_id"],
+                            },
+                        },
+                    },
+                    "required": ["updates"],
+                },
+            },
+            {
+                "name": "batch_delete",
+                "description": "Delete multiple memories in one efficient operation. Much faster than calling delete_memory multiple times.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "memory_ids": {
+                            "type": "array",
+                            "description": "List of memory IDs to delete",
+                            "items": {"type": "string"},
+                        },
+                    },
+                    "required": ["memory_ids"],
+                },
+            },
+            {
+                "name": "export_vault_tool",
+                "description": "Export vault memories to JSON, CSV, or ZIP format. Useful for backups, data portability, and integration with external tools.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "output_path": {
+                            "type": "string",
+                            "description": "Path for the export file",
+                        },
+                        "format": {
+                            "type": "string",
+                            "enum": ["json", "csv", "zip"],
+                            "description": "Export format",
+                            "default": "json",
+                        },
+                        "filter_tags": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "Optional list of tags to filter memories",
+                        },
+                        "compress": {
+                            "type": "boolean",
+                            "description": "Whether to compress the output (gzip for json/csv)",
+                            "default": False,
+                        },
+                    },
+                    "required": ["output_path"],
+                },
+            },
+            {
+                "name": "import_backup_tool",
+                "description": "Import memories from a backup file (JSON or ZIP). Useful for restoring from backups or migrating vaults.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "backup_path": {
+                            "type": "string",
+                            "description": "Path to backup file",
+                        },
+                        "merge": {
+                            "type": "boolean",
+                            "description": "If true, merge with existing. If false, clear vault first.",
+                            "default": True,
+                        },
+                        "skip_duplicates": {
+                            "type": "boolean",
+                            "description": "If true, skip memories that already exist",
+                            "default": False,
+                        },
+                    },
+                    "required": ["backup_path"],
+                },
+            },
+            {
+                "name": "create_backup_tool",
+                "description": "Create a backup of the vault. Essential for disaster recovery and version control.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "destination": {
+                            "type": "string",
+                            "description": "Destination directory or file path",
+                        },
+                        "compress": {
+                            "type": "boolean",
+                            "description": "Whether to create compressed ZIP backup",
+                            "default": True,
+                        },
+                    },
+                    "required": ["destination"],
+                },
+            },
+            {
+                "name": "get_config_value",
+                "description": "Get a configuration value from ~/.memograph/config.yaml",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "key": {
+                            "type": "string",
+                            "description": "Configuration key to get",
+                        },
+                    },
+                    "required": ["key"],
+                },
+            },
+            {
+                "name": "set_config_value",
+                "description": "Set a configuration value in ~/.memograph/config.yaml",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "key": {
+                            "type": "string",
+                            "description": "Configuration key to set",
+                        },
+                        "value": {
+                            "description": "Value to set (can be any type)",
+                        },
+                    },
+                    "required": ["key", "value"],
+                },
+            },
+            {
+                "name": "list_config_all",
+                "description": "List all configuration settings from ~/.memograph/config.yaml",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {},
+                },
+            },
+            {
+                "name": "create_profile_config",
+                "description": "Create a new configuration profile with custom settings",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "name": {
+                            "type": "string",
+                            "description": "Profile name",
+                        },
+                        "settings": {
+                            "type": "object",
+                            "description": "Profile settings dictionary",
+                        },
+                    },
+                    "required": ["name", "settings"],
+                },
+            },
+            {
+                "name": "use_profile_config",
+                "description": "Switch to a specific configuration profile",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "name": {
+                            "type": "string",
+                            "description": "Profile name to activate",
+                        },
+                    },
+                    "required": ["name"],
+                },
+            },
+            {
+                "name": "list_profiles_config",
+                "description": "List all available configuration profiles",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {},
+                },
+            },
+            {
+                "name": "delete_profile_config",
+                "description": "Delete a configuration profile",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "name": {
+                            "type": "string",
+                            "description": "Profile name to delete",
+                        },
+                    },
+                    "required": ["name"],
                 },
             },
             {
