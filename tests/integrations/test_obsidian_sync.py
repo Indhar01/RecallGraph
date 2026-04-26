@@ -245,12 +245,17 @@ class TestPushToObsidian:
     @pytest.mark.asyncio
     async def test_push_updates_existing_file(self, obsidian_sync, temp_obsidian_vault):
         """Test that push updates existing Obsidian files."""
+        import time
+
         obsidian_path = temp_obsidian_vault / "existing.md"
 
         # Create initial file
         obsidian_path.write_text(
             "---\ntitle: Old\n---\n\nOld content", encoding="utf-8"
         )
+
+        # Small delay to ensure memory timestamp is clearly newer than the file
+        time.sleep(0.05)
 
         # Create updated memory
         await obsidian_sync.kernel.remember_async(

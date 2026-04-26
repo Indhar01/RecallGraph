@@ -94,9 +94,9 @@ class TestSQLitePerformance:
         json_duration = time.time() - start
 
         # SQLite should be faster or at most 3x slower (Windows I/O can vary significantly)
-        assert (
-            sqlite_duration < json_duration * 3
-        ), f"SQLite ({sqlite_duration:.3f}s) should be comparable to JSON ({json_duration:.3f}s)"
+        assert sqlite_duration < json_duration * 3, (
+            f"SQLite ({sqlite_duration:.3f}s) should be comparable to JSON ({json_duration:.3f}s)"
+        )
 
         print(
             f"\nSQLite write: {sqlite_duration:.3f}s, JSON write: {json_duration:.3f}s"
@@ -174,9 +174,9 @@ class TestLRUCachePerformance:
         # Skip the assertion if cold parse was too fast to measure reliably
         # (sub-millisecond timing on fast machines is not meaningful)
         if cold_duration > 0.001:
-            assert (
-                warm_duration < cold_duration * 0.5
-            ), f"Cached parse ({warm_duration:.3f}s) should be much faster than cold ({cold_duration:.3f}s)"
+            assert warm_duration < cold_duration * 0.5, (
+                f"Cached parse ({warm_duration:.3f}s) should be much faster than cold ({cold_duration:.3f}s)"
+            )
 
     def test_wikilink_extraction_caching(self, parser):
         """Test wikilink extraction caching."""
@@ -237,9 +237,9 @@ class TestWikilinkResolution:
         resolution_duration = time.time() - start
 
         # Should be very fast with index
-        assert (
-            resolution_duration < 0.1
-        ), f"Wikilink resolution should be fast with index: {resolution_duration:.3f}s"
+        assert resolution_duration < 0.1, (
+            f"Wikilink resolution should be fast with index: {resolution_duration:.3f}s"
+        )
 
         print(f"\nIndex build: {index_build_duration:.3f}s")
         print(
@@ -338,9 +338,9 @@ class TestEndToEndPerformance:
 
         # Verify second sync completes successfully with no new pulls
         # (files should be skipped due to unchanged hashes)
-        assert (
-            stats["pulled"] == 0
-        ), f"Expected 0 pulls on unchanged sync, got {stats['pulled']}"
+        assert stats["pulled"] == 0, (
+            f"Expected 0 pulls on unchanged sync, got {stats['pulled']}"
+        )
         assert stats["errors"] == []
 
         # Note: End-to-end timing can vary significantly due to database operations,
