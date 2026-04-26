@@ -573,7 +573,7 @@ class MemoGraphMCPServer:
 
             # Otherwise, return context for client's LLM to use
             else:
-                return self._add_vault_context(
+                result = self._add_vault_context(
                     {
                         "success": True,
                         "context": context,
@@ -583,6 +583,16 @@ class MemoGraphMCPServer:
                         "message": "Use the provided context to answer the question. The context includes relevant memories from the vault with source citations [S1], [S2], etc.",
                     }
                 )
+
+                # Record for conversation monitor (even in context_only mode)
+                if self.conversation_monitor:
+                    self.conversation_monitor.record_tool_call(
+                        tool_name="query_with_context",
+                        args={"question": question, "tags": tags, "top_k": top_k},
+                        result=result,
+                    )
+
+                return result
 
         except Exception as e:
             logger.error(f"Error querying with context: {e}")

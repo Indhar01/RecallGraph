@@ -431,7 +431,7 @@ class AutonomousHooks:
             seconds_ago = int(time_diff.total_seconds())
 
             # Check if within time window
-            if seconds_ago <= time_window_seconds:
+            if seconds_ago < time_window_seconds:
                 return {
                     "success": True,
                     "found_recent_save": True,
