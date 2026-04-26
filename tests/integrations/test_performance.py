@@ -94,9 +94,9 @@ class TestSQLitePerformance:
         json_duration = time.time() - start
 
         # SQLite should be faster or comparable
-        assert (
-            sqlite_duration < json_duration * 2
-        ), f"SQLite ({sqlite_duration:.3f}s) should be faster than JSON ({json_duration:.3f}s)"
+        assert sqlite_duration < json_duration * 2, (
+            f"SQLite ({sqlite_duration:.3f}s) should be faster than JSON ({json_duration:.3f}s)"
+        )
 
         print(
             f"\nSQLite write: {sqlite_duration:.3f}s, JSON write: {json_duration:.3f}s"
@@ -165,9 +165,9 @@ class TestLRUCachePerformance:
         warm_duration = time.time() - start
 
         # Warm cache should be significantly faster
-        assert (
-            warm_duration < cold_duration * 0.5
-        ), f"Cached parse ({warm_duration:.3f}s) should be much faster than cold ({cold_duration:.3f}s)"
+        assert warm_duration < cold_duration * 0.5, (
+            f"Cached parse ({warm_duration:.3f}s) should be much faster than cold ({cold_duration:.3f}s)"
+        )
 
         print(f"\nCold cache: {cold_duration:.3f}s, Warm cache: {warm_duration:.3f}s")
         print(f"Speedup: {cold_duration / warm_duration:.2f}x")
@@ -231,9 +231,9 @@ class TestWikilinkResolution:
         resolution_duration = time.time() - start
 
         # Should be very fast with index
-        assert (
-            resolution_duration < 0.1
-        ), f"Wikilink resolution should be fast with index: {resolution_duration:.3f}s"
+        assert resolution_duration < 0.1, (
+            f"Wikilink resolution should be fast with index: {resolution_duration:.3f}s"
+        )
 
         print(f"\nIndex build: {index_build_duration:.3f}s")
         print(
@@ -331,9 +331,9 @@ class TestEndToEndPerformance:
         warm_duration = time.time() - start
 
         # Warm sync should be much faster (mostly cache hits)
-        assert (
-            warm_duration < cold_duration * 0.5
-        ), f"Warm sync ({warm_duration:.3f}s) should be faster than cold ({cold_duration:.3f}s)"
+        assert warm_duration < cold_duration * 0.5, (
+            f"Warm sync ({warm_duration:.3f}s) should be faster than cold ({cold_duration:.3f}s)"
+        )
 
         print(
             f"\nCold sync: {cold_duration:.3f}s ({cold_duration / 100 * 1000:.1f}ms/file)"
