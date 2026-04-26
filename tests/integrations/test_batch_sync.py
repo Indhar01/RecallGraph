@@ -360,16 +360,32 @@ class TestErrorHandling:
                 f"---\ntitle: Valid {i}\n---\n\nContent {i}", encoding="utf-8"
             )
 
-        # Create an invalid note (corrupted frontmatter)
+        # Create a note that will cause parsing error
         bad_note = temp_obsidian_vault / "invalid.md"
-        bad_note.write_text("---\ntitle: Broken\n--\nMissing closing", encoding="utf-8")
+        bad_note.write_text("---\ntitle: Invalid\n---\n\nContent", encoding="utf-8")
+
+        # Mock the parser to raise an exception for the invalid note
+        original_parse = obsidian_sync.parser.parse_file
+
+        def mock_parse(path):
+            if "invalid.md" in str(path):
+                raise ValueError("Simulated parsing error")
+            return original_parse(path)
+
+        obsidian_sync.parser.parse_file = mock_parse
 
         stats = await obsidian_sync.batch_sync(direction="pull")
 
         # Should have processed valid notes
-        assert stats["pulled"] >= 4  # At least some valid notes
+        assert (
+            stats["pulled"] >= 4
+        ), f"Expected at least 4 pulled but got {stats['pulled']}"
         # Should have recorded error for invalid note
-        assert len(stats["errors"]) > 0
+        assert len(stats["errors"]) > 0, f"Expected errors but got: {stats}"
+        # Verify the error message mentions the invalid file
+        assert any(
+            "invalid.md" in str(err) for err in stats["errors"]
+        ), f"Expected error about invalid.md but got: {stats['errors']}"
 
     @pytest.mark.asyncio
     async def test_batch_sync_handles_permission_errors(

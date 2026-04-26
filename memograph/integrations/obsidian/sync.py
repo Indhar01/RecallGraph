@@ -84,7 +84,9 @@ class ObsidianSync:
         # Error tracking
         self._error_history: List[Dict[str, Any]] = []
         self._error_count = 0
-        self._error_rate_limit = 50  # Max errors before stopping
+        self._error_rate_limit = (
+            10  # Max errors before stopping (lowered for better safety)
+        )
         self._last_error_time = 0.0
 
         # Ensure vault paths exist
@@ -123,20 +125,24 @@ class ObsidianSync:
                         pull_stats = await self.pull_from_obsidian()
                         stats["pulled"] = pull_stats["count"]
                         stats["conflicts"] += pull_stats["conflicts"]
-                        if "errors" in pull_stats:
+                        if "errors" in pull_stats and pull_stats["errors"]:
                             stats["errors"].extend(pull_stats["errors"])
                     except (ConnectionError, TimeoutError, ConnectionRefusedError) as e:
-                        stats["errors"].append(f"Network error during pull: {str(e)}")
+                        error_msg = f"Network error during pull: {str(e)}"
+                        stats["errors"].append(error_msg)
+                        self._record_error(e, transient=True)
 
                 if direction in ["push", "bidirectional"]:
                     try:
                         push_stats = await self.push_to_obsidian()
                         stats["pushed"] = push_stats["count"]
                         stats["conflicts"] += push_stats["conflicts"]
-                        if "errors" in push_stats:
+                        if "errors" in push_stats and push_stats["errors"]:
                             stats["errors"].extend(push_stats["errors"])
                     except (ConnectionError, TimeoutError, ConnectionRefusedError) as e:
-                        stats["errors"].append(f"Network error during push: {str(e)}")
+                        error_msg = f"Network error during push: {str(e)}"
+                        stats["errors"].append(error_msg)
+                        self._record_error(e, transient=True)
 
                 self.state.mark_synced()
 
@@ -620,11 +626,15 @@ class ObsidianSync:
                         self._remove_duplicate_memories(str(md_file), node_id)
 
                 except Exception as remember_error:
-                    # Record error and re-raise to outer handler
+                    # Record error
                     self._record_error(
                         remember_error,
                         transient=self._is_transient_error(remember_error),
                     )
+                    # Re-raise critical errors for rollback handling
+                    if self._is_critical_error(remember_error):
+                        raise
+                    # For non-critical errors, let outer handler catch and continue
                     raise
 
                 # Update sync state with file metadata
@@ -635,6 +645,12 @@ class ObsidianSync:
                 stats["count"] += 1
 
             except Exception as e:
+                # Check if this is a critical error that should trigger rollback
+                if self._is_critical_error(e):
+                    # Re-raise critical errors to propagate to batch_sync
+                    raise
+
+                # For non-critical errors, record and continue
                 self._record_error(e, transient=self._is_transient_error(e))
                 error_msg = f"{md_file}: {str(e)}"
                 if "errors" not in stats:

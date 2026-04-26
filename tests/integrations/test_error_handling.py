@@ -129,8 +129,12 @@ class TestNetworkErrorHandling:
     """Test network error handling."""
 
     @pytest.mark.asyncio
-    async def test_connection_timeout(self, sync_manager):
+    async def test_connection_timeout(self, sync_manager, tmp_path):
         """Test handling of connection timeouts."""
+        # Create a test file so sync has something to process
+        test_file = tmp_path / "obsidian_vault" / "test.md"
+        test_file.write_text("# Test\n\nContent", encoding="utf-8")
+
         with patch.object(sync_manager.kernel, "remember_async") as mock_remember:
             mock_remember.side_effect = TimeoutError("Connection timeout")
 
@@ -140,8 +144,12 @@ class TestNetworkErrorHandling:
             assert any("timeout" in str(err).lower() for err in stats["errors"])
 
     @pytest.mark.asyncio
-    async def test_connection_refused(self, sync_manager):
+    async def test_connection_refused(self, sync_manager, tmp_path):
         """Test handling of connection refused errors."""
+        # Create a test file so sync has something to process
+        test_file = tmp_path / "obsidian_vault" / "test.md"
+        test_file.write_text("# Test\n\nContent", encoding="utf-8")
+
         with patch.object(sync_manager.kernel, "remember_async") as mock_remember:
             mock_remember.side_effect = ConnectionRefusedError("Connection refused")
 
@@ -557,7 +565,15 @@ class TestErrorMetrics:
             stats = await sync_manager.batch_sync(
                 file_paths=files,
                 direction="pull",
+                batch_size=5,  # Small batch size to trigger rate limiting between batches
             )
 
             # Should stop early due to error rate limiting
-            assert stats.get("rate_limited", False) or len(stats["errors"]) < len(files)
+            # With 20 files, batch_size=5, and error_rate_limit=10:
+            # Batch 1: 5 files, 5 errors
+            # Batch 2: 5 files, 10 errors total
+            # Before Batch 3: check errors (10) >= limit (10), set rate_limited=True, break
+            # So should have 10 errors and rate_limited=True
+            assert (
+                stats.get("rate_limited", False) or len(stats["errors"]) < len(files)
+            ), f"Expected rate limiting but got {len(stats['errors'])} errors and rate_limited={stats.get('rate_limited', False)}"

@@ -19,6 +19,7 @@ class ObsidianParser:
         """
         self.cache_size = cache_size
         self._wikilink_cache: Dict[str, Set[str]] = {}
+        self._parse_cache: Dict[tuple, Dict[str, Any]] = {}
 
     def parse_file(self, file_path: Path) -> Dict[str, Any]:
         """Parse Obsidian markdown file with caching.
@@ -66,14 +67,10 @@ class ObsidianParser:
 
         return result
 
-    @lru_cache(maxsize=128)
     def _get_cached_parse(
         self, file_path: str, mtime: float, size: int
     ) -> Optional[Dict[str, Any]]:
         """Get cached parse result if file hasn't changed.
-
-        The lru_cache decorator caches based on (file_path, mtime, size),
-        so it automatically invalidates when the file changes.
 
         Args:
             file_path: Path to the file
@@ -83,17 +80,13 @@ class ObsidianParser:
         Returns:
             Cached parse result or None
         """
-        # This is a placeholder - actual caching is done by lru_cache decorator
-        # The cache key is (file_path, mtime, size) which ensures cache invalidation
-        return None
+        cache_key = (file_path, mtime, size)
+        return self._parse_cache.get(cache_key)
 
     def _cache_parse(
         self, file_path: str, mtime: float, size: int, result: Dict[str, Any]
     ) -> None:
-        """Cache parse result.
-
-        This is used to populate the LRU cache. The actual caching is handled
-        by the @lru_cache decorator on _get_cached_parse.
+        """Cache parse result with LRU eviction.
 
         Args:
             file_path: Path to the file
@@ -101,9 +94,15 @@ class ObsidianParser:
             size: File size
             result: Parse result to cache
         """
-        # Store in the method that has @lru_cache decorator
-        # We need to make the cached method return the result
-        pass
+        cache_key = (file_path, mtime, size)
+
+        # Implement simple LRU: if cache is full, remove oldest entry
+        if len(self._parse_cache) >= self.cache_size:
+            # Remove the first (oldest) item
+            oldest_key = next(iter(self._parse_cache))
+            del self._parse_cache[oldest_key]
+
+        self._parse_cache[cache_key] = result
 
     @lru_cache(maxsize=256)
     def extract_wikilinks(self, content: str) -> List[str]:
@@ -192,7 +191,7 @@ class ObsidianParser:
         """Clear all caches."""
         self.extract_wikilinks.cache_clear()
         self.extract_tags.cache_clear()
-        self._get_cached_parse.cache_clear()
+        self._parse_cache.clear()
         self._wikilink_cache.clear()
         if hasattr(self, "_filename_index"):
             self._filename_index.clear()
@@ -206,5 +205,10 @@ class ObsidianParser:
         return {
             "wikilinks_cache": self.extract_wikilinks.cache_info()._asdict(),
             "tags_cache": self.extract_tags.cache_info()._asdict(),
-            "parse_cache": self._get_cached_parse.cache_info()._asdict(),
+            "parse_cache": {
+                "size": len(self._parse_cache),
+                "maxsize": self.cache_size,
+                "hits": 0,  # Would need to track separately
+                "misses": 0,  # Would need to track separately
+            },
         }

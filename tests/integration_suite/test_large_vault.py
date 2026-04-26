@@ -387,9 +387,32 @@ class TestConcurrentPerformance:
     async def test_concurrent_batch_operations(self, sync_engine, performance_vault):
         """Test performance of concurrent batch operations."""
 
-        # Create two sets of files
-        set1 = create_test_vault(performance_vault / "set1", 50)
-        set2 = create_test_vault(performance_vault / "set2", 50)
+        # Create two sets of files with unique names
+        # Set 1: note_0000 to note_0049
+        set1_dir = performance_vault / "set1"
+        set1_dir.mkdir(exist_ok=True)
+        set1 = create_test_vault(set1_dir, 50)
+
+        # Set 2: note_0050 to note_0099 (offset by 50 to avoid name collisions)
+        set2_dir = performance_vault / "set2"
+        set2_dir.mkdir(exist_ok=True)
+        set2 = []
+        for i in range(50, 100):
+            # Create files with offset numbering to avoid collisions
+            file_path = set2_dir / f"note_{i:04d}.md"
+            content = f"""---
+title: Note {i}
+tags: [test, perf]
+---
+
+# Note {i}
+
+This is test note number {i} for performance testing.
+
+It contains some content and a [[link_{i}]].
+"""
+            file_path.write_text(content, encoding="utf-8")
+            set2.append(file_path)
 
         # Move files to main vault
         for f in set1 + set2:
@@ -401,7 +424,7 @@ class TestConcurrentPerformance:
         stats = await sync_engine.batch_sync(direction="pull", batch_size=25)
         total_time = time.time() - start_time
 
-        assert stats["pulled"] == 100
+        assert stats["pulled"] == 100, f"Expected 100 pulled, got {stats['pulled']}"
         assert total_time < 60.0  # Should handle concurrently
 
         print(f"\nConcurrent batch (100 files): {total_time:.2f}s")
