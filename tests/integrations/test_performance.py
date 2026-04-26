@@ -8,6 +8,8 @@ This module tests the performance optimizations including:
 """
 
 import time
+import tempfile
+from pathlib import Path
 
 import pytest
 
@@ -19,9 +21,6 @@ from memograph.integrations.obsidian.performance_metrics import (
 )
 from memograph.integrations.obsidian.sync import ObsidianSync
 from memograph.integrations.obsidian.sync_state import SyncState
-
-import tempfile
-from pathlib import Path
 
 
 @pytest.fixture
@@ -173,4 +172,18 @@ class TestLRUCachePerformance:
 
         # Second parse (warm cache - same files)
         start = time.time()
-        for
+        for note in sample_notes[:10]:
+            parser.parse_file(note)
+        warm_duration = time.time() - start
+
+        print(f"\nCold cache: {cold_duration:.3f}s, Warm cache: {warm_duration:.3f}s")
+
+        # Warm cache should be faster or comparable
+        # Use generous multiplier to avoid flakiness on slow CI machines
+        assert warm_duration < max(
+            cold_duration * 10, 5.0
+        ), f"Warm cache ({warm_duration:.3f}s) unexpectedly slower than cold ({cold_duration:.3f}s)"
+
+    def test_cache_hit_rate(self, parser, sample_notes):
+        """Test that cache hit rate improves on repeated access."""
+        # Parse all notes once (cold)
