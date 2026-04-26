@@ -231,4 +231,3 @@ jobs:
           echo "- [PyPI Package](https://pypi.org/project/memograph/)" >> $GITHUB_STEP_SUMMARY
           echo "- [MCP Registry](https://modelcontextprotocol.io/registry)" >> $GITHUB_STEP_SUMMARY
           echo "- [Issues](https://github.com/${{ github.repository }}/issues?q=is%3Aissue+is%3Aopen+label%3Amcp-release)" >> $GITHUB_STEP_SUMMARY
-
