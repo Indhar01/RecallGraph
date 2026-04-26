@@ -6,7 +6,7 @@ from unittest.mock import patch, MagicMock
 # Skip all tests in this module if notion-client is not installed
 pytest.importorskip("notion_client", reason="notion-client package not installed")
 
-from memograph.integrations.notion.auth import NotionAuth
+from memograph.integrations.notion.auth import NotionAuth  # noqa: E402
 
 
 class TestNotionAuth:

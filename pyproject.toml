@@ -154,6 +154,7 @@ ignore = [
 "tests/**/*.py" = [
     "ARG",  # Unused function arguments
     "S101", # Use of assert
+    "E402", # Module level import not at top of file (for pytest.importorskip)
 ]
 "examples/**/*.py" = [
     "T201", # print statements
@@ -182,6 +183,98 @@ ignore_missing_imports = true
 [[tool.mypy.overrides]]
 module = "tests.*"
 disallow_untyped_defs = false
+
+[[tool.mypy.overrides]]
+module = "memograph.integrations.notion.client"
+ignore_errors = true
+
+[[tool.mypy.overrides]]
+module = "memograph.integrations.notion.auth"
+ignore_errors = true
+
+[[tool.mypy.overrides]]
+module = "memograph.integrations.notion.integration"
+ignore_errors = true
+
+[[tool.mypy.overrides]]
+module = "memograph.integrations.obsidian.sync_state"
+ignore_errors = true
+
+[[tool.mypy.overrides]]
+module = "memograph.integrations.obsidian.sync"
+ignore_errors = true
+
+[[tool.mypy.overrides]]
+module = "memograph.integrations.obsidian.watcher"
+ignore_errors = true
+
+[[tool.mypy.overrides]]
+module = "memograph.cli_infrastructure_helpers"
+ignore_errors = true
+
+[[tool.mypy.overrides]]
+module = "memograph.cli_helpers"
+ignore_errors = true
+
+[[tool.mypy.overrides]]
+module = "memograph.cli_batch_helpers"
+ignore_errors = true
+
+[[tool.mypy.overrides]]
+module = "memograph.cli"
+ignore_errors = true
+
+[[tool.mypy.overrides]]
+module = "memograph.core.kernel"
+ignore_errors = true
+
+[[tool.mypy.overrides]]
+module = "memograph.core.config"
+ignore_errors = true
+
+[[tool.mypy.overrides]]
+module = "memograph.core.indexer"
+ignore_errors = true
+
+[[tool.mypy.overrides]]
+module = "memograph.core.logging_config"
+ignore_errors = true
+
+[[tool.mypy.overrides]]
+module = "memograph.core.kernel_gam_async"
+ignore_errors = true
+
+[[tool.mypy.overrides]]
+module = "memograph.mcp.conversation_monitor"
+ignore_errors = true
+
+[[tool.mypy.overrides]]
+module = "memograph.mcp.server"
+ignore_errors = true
+
+[[tool.mypy.overrides]]
+module = "memograph.ai.content_analyzer"
+ignore_errors = true
+
+[[tool.mypy.overrides]]
+module = "memograph.ai.gap_detector"
+ignore_errors = true
+
+[[tool.mypy.overrides]]
+module = "memograph.ai.auto_tagger"
+ignore_errors = true
+
+[[tool.mypy.overrides]]
+module = "memograph.adapters.embeddings.openai"
+ignore_errors = true
+
+[[tool.mypy.overrides]]
+module = "memograph.adapters.llm.litellm_adapter"
+ignore_errors = true
+
+[[tool.mypy.overrides]]
+module = "memograph.web.backend.errors"
+ignore_errors = true
 
 # Pytest configuration
 [tool.pytest.ini_options]

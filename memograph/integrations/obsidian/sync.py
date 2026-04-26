@@ -272,7 +272,7 @@ class ObsidianSync:
                     "sync_timestamp": datetime.now().isoformat(),
                 },
             )
-            
+
             # Remove any duplicate memories pointing to the same file
             # Only for OBSIDIAN_WINS strategy to avoid interfering with other strategies
             if node_id and self.resolver.strategy == ConflictStrategy.OBSIDIAN_WINS:
@@ -575,12 +575,15 @@ class ObsidianSync:
                             "sync_timestamp": datetime.now().isoformat(),
                         },
                     )
-                    
+
                     # Remove any duplicate memories pointing to the same file
                     # Only for OBSIDIAN_WINS strategy to avoid interfering with other strategies
-                    if node_id and self.resolver.strategy == ConflictStrategy.OBSIDIAN_WINS:
+                    if (
+                        node_id
+                        and self.resolver.strategy == ConflictStrategy.OBSIDIAN_WINS
+                    ):
                         self._remove_duplicate_memories(str(md_file), node_id)
-                        
+
                 except Exception as remember_error:
                     # Record error and re-raise to outer handler
                     self._record_error(
@@ -668,7 +671,9 @@ class ObsidianSync:
 
                     # Check for conflicts
                     if self.resolver.detect_conflict(current, memory_data):
-                        resolved = self.resolver.resolve(current, memory_data, str(file_path))
+                        resolved = self.resolver.resolve(
+                            current, memory_data, str(file_path)
+                        )
                         stats["conflicts"] += 1
                         self.state.add_conflict(
                             str(file_path),
@@ -799,12 +804,15 @@ class ObsidianSync:
                             "sync_timestamp": datetime.now().isoformat(),
                         },
                     )
-                    
+
                     # Remove any duplicate memories pointing to the same file
                     # Only for OBSIDIAN_WINS strategy to avoid interfering with other strategies
-                    if node_id and self.resolver.strategy == ConflictStrategy.OBSIDIAN_WINS:
+                    if (
+                        node_id
+                        and self.resolver.strategy == ConflictStrategy.OBSIDIAN_WINS
+                    ):
                         self._remove_duplicate_memories(str(md_file), node_id)
-                        
+
                 except Exception as remember_error:
                     # Record error and re-raise to outer handler
                     self._record_error(
@@ -864,7 +872,9 @@ class ObsidianSync:
 
                     # Check for conflicts
                     if self.resolver.detect_conflict(current, memory_data):
-                        resolved = self.resolver.resolve(current, memory_data, str(file_path))
+                        resolved = self.resolver.resolve(
+                            current, memory_data, str(file_path)
+                        )
                         stats["conflicts"] += 1
                         self.state.add_conflict(
                             str(file_path),
@@ -937,7 +947,7 @@ class ObsidianSync:
         """
         all_matches = self._find_all_memories_by_path(obsidian_path)
         removed = 0
-        
+
         for node in all_matches:
             if node.id != keep_node_id:
                 # Remove duplicate memory from graph and delete its file
@@ -946,13 +956,13 @@ class ObsidianSync:
                     file_path = self.memograph_vault / f"{node.id}.md"
                     if file_path.exists():
                         file_path.unlink()
-                    
+
                     # Remove from graph
                     self.kernel.graph.remove_node(node.id)
                     removed += 1
                 except Exception as e:
                     print(f"Warning: Failed to remove duplicate memory {node.id}: {e}")
-        
+
         return removed
 
     def _node_to_dict(self, node: Any) -> Dict[str, Any]:
@@ -1053,7 +1063,7 @@ class ObsidianSync:
         # Get conflicts and extract just the file paths for easier checking
         conflicts = self.state.get_conflicts()
         conflict_paths = [c["file_path"] for c in conflicts]
-        
+
         return {
             "last_sync": self.state.get_last_sync(),
             "tracked_files": len(self.state.get_tracked_files()),

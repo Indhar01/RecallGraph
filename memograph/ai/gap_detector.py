@@ -270,7 +270,7 @@ class GapDetector:
 
                 # Create gap even if no potential connections found (for truly isolated notes)
                 severity = 0.7 if connection_count == 0 else 0.5
-                
+
                 if potential_connections:
                     suggestions = [
                         f"Add links to: {', '.join(potential_connections[:3])}",
