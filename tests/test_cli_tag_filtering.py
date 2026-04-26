@@ -76,33 +76,48 @@ class TestCommaSeparatedTagParsing:
 
     def test_parse_single_tag(self):
         """Test parsing a single tag."""
+
         # Simulate the lambda parser from cli.py line 846
-        parser = lambda s: [t.strip() for t in s.split(",")]
+        def parser(s):
+            return [t.strip() for t in s.split(",")]
+
         result = parser("python")
         assert result == ["python"]
 
     def test_parse_multiple_tags_comma_separated(self):
         """Test parsing comma-separated tags."""
-        parser = lambda s: [t.strip() for t in s.split(",")]
+
+        def parser(s):
+            return [t.strip() for t in s.split(",")]
+
         result = parser("python,javascript,ruby")
         assert result == ["python", "javascript", "ruby"]
 
     def test_parse_tags_with_spaces(self):
         """Test parsing tags with spaces around commas."""
-        parser = lambda s: [t.strip() for t in s.split(",")]
+
+        def parser(s):
+            return [t.strip() for t in s.split(",")]
+
         result = parser("python, javascript , ruby")
         assert result == ["python", "javascript", "ruby"]
 
     def test_parse_tags_with_empty_strings(self):
         """Test parsing handles empty strings."""
-        parser = lambda s: [t.strip() for t in s.split(",")]
+
+        def parser(s):
+            return [t.strip() for t in s.split(",")]
+
         result = parser("python,,javascript")
         # Empty strings become empty after strip
         assert result == ["python", "", "javascript"]
 
     def test_parse_tags_case_sensitive(self):
         """Test that tag parsing preserves case."""
-        parser = lambda s: [t.strip() for t in s.split(",")]
+
+        def parser(s):
+            return [t.strip() for t in s.split(",")]
+
         result = parser("Python,JAVASCRIPT,ruby")
         assert result == ["Python", "JAVASCRIPT", "ruby"]
 

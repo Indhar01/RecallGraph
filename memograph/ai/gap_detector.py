@@ -268,22 +268,34 @@ class GapDetector:
                             potential_connections.append(other_title)
                             break
 
+                # Create gap even if no potential connections found (for truly isolated notes)
+                severity = 0.7 if connection_count == 0 else 0.5
+                
                 if potential_connections:
-                    severity = 0.7 if connection_count == 0 else 0.5
+                    suggestions = [
+                        f"Add links to: {', '.join(potential_connections[:3])}",
+                        "Review content for connection opportunities",
+                    ]
+                    related_notes = [title] + potential_connections[:5]
+                else:
+                    # Single note or truly isolated - provide general suggestions
+                    suggestions = [
+                        "Add links to related concepts when more notes are created",
+                        "Add tags to help with future connections",
+                        "Review content and expand with related topics",
+                    ]
+                    related_notes = [title]
 
-                    gaps.append(
-                        KnowledgeGap(
-                            gap_type="isolated_note",
-                            title=f"Isolated note: {title}",
-                            description=f"Note has only {connection_count} connection(s)",
-                            severity=severity,
-                            suggestions=[
-                                f"Add links to: {', '.join(potential_connections[:3])}",
-                                "Review content for connection opportunities",
-                            ],
-                            related_notes=[title] + potential_connections[:5],
-                        )
+                gaps.append(
+                    KnowledgeGap(
+                        gap_type="isolated_note",
+                        title=f"Isolated note: {title}",
+                        description=f"Note has only {connection_count} connection(s)",
+                        severity=severity,
+                        suggestions=suggestions,
+                        related_notes=related_notes,
                     )
+                )
 
         return gaps
 

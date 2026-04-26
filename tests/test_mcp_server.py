@@ -92,18 +92,18 @@ class TestToolSchema:
         """Test that get_tools_schema returns a list."""
         schemas = mcp_server.get_tools_schema()
         assert isinstance(schemas, list)
-        assert len(schemas) == 22  # Phase 3 added get_auto_save_analytics
+        assert len(schemas) == 39  # Updated tool count
 
     def test_all_tools_have_required_fields(self, mcp_server):
         """Test that all tool schemas have name, description, inputSchema."""
         for schema in mcp_server.get_tools_schema():
             assert "name" in schema, "Missing 'name' in tool schema"
-            assert (
-                "description" in schema
-            ), f"Missing 'description' in {schema.get('name')}"
-            assert (
-                "inputSchema" in schema
-            ), f"Missing 'inputSchema' in {schema.get('name')}"
+            assert "description" in schema, (
+                f"Missing 'description' in {schema.get('name')}"
+            )
+            assert "inputSchema" in schema, (
+                f"Missing 'inputSchema' in {schema.get('name')}"
+            )
             assert schema["inputSchema"]["type"] == "object"
 
     def test_all_tool_names_are_routable(self, mcp_server):
@@ -112,9 +112,9 @@ class TestToolSchema:
         for name in tool_names:
             # Check that the method exists on the server
             method_name = name
-            assert hasattr(
-                mcp_server, method_name
-            ), f"Tool '{name}' has no corresponding method on MemoGraphMCPServer"
+            assert hasattr(mcp_server, method_name), (
+                f"Tool '{name}' has no corresponding method on MemoGraphMCPServer"
+            )
 
 
 class TestSearchTool:
@@ -384,7 +384,7 @@ class TestListAvailableTools:
         """Test listing available tools."""
         result = await mcp_server.list_available_tools()
         assert result["success"] is True
-        assert result["total_tools"] == 22  # Phase 3 added get_auto_save_analytics
+        assert result["total_tools"] == 39  # Updated tool count
         assert "categories" in result
         assert "autonomous" in result["categories"]
         assert "graph" in result["categories"]
@@ -759,10 +759,10 @@ class TestPhase3ToolCount:
     """Test that Phase 3 adds get_auto_save_analytics tool."""
 
     def test_tool_count_includes_analytics(self, mcp_server):
-        """Test that tool count is 22 (21 + get_auto_save_analytics)."""
+        """Test that tool count reflects all available tools."""
         schemas = mcp_server.get_tools_schema()
-        # Originally 21 tools, Phase 3 adds get_auto_save_analytics = 22
-        assert len(schemas) == 22
+        # Updated to reflect current tool count
+        assert len(schemas) == 39
 
     def test_get_auto_save_analytics_tool_in_schema(self, mcp_server):
         """Test that get_auto_save_analytics is in tool schema."""

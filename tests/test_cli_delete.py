@@ -63,14 +63,14 @@ def test_vault_with_memories(tmp_path):
     for mem in memories:
         file_path = vault / f"{mem['id']}.md"
         content = f"""---
-id: {mem['id']}
-title: {mem['title']}
-memory_type: {mem['memory_type']}
-salience: {mem['salience']}
-tags: {mem['tags']}
+id: {mem["id"]}
+title: {mem["title"]}
+memory_type: {mem["memory_type"]}
+salience: {mem["salience"]}
+tags: {mem["tags"]}
 ---
 
-{mem['content']}
+{mem["content"]}
 """
         file_path.write_text(content, encoding="utf-8")
 

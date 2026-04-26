@@ -867,9 +867,9 @@ def format_search_detailed(results: list) -> str:
 
     lines = []
     for i, result in enumerate(results, 1):
-        lines.append(f"\n{'='*80}")
+        lines.append(f"\n{'=' * 80}")
         lines.append(f"Result {i}/{len(results)}")
-        lines.append(f"{'='*80}")
+        lines.append(f"{'=' * 80}")
         mem_type = getattr(result, "memory_type", "N/A")
         lines.append(f"ID: {getattr(result, 'id', 'N/A')}")
         lines.append(f"Title: {getattr(result, 'title', 'Untitled')}")

@@ -71,7 +71,7 @@ This is a more complex note with multiple sections.
 
 ## Section 1: Introduction
 
-This note contains [[note_{i-1}]] and [[note_{i+1}]] references.
+This note contains [[note_{i - 1}]] and [[note_{i + 1}]] references.
 
 ## Section 2: Content
 
@@ -140,7 +140,9 @@ class TestSmallVaultPerformance:
         assert stats["count"] == 10
         assert sync_time < 5.0  # Should complete in under 5 seconds
 
-        print(f"\n10 files sync time: {sync_time:.2f}s ({10/sync_time:.1f} files/sec)")
+        print(
+            f"\n10 files sync time: {sync_time:.2f}s ({10 / sync_time:.1f} files/sec)"
+        )
 
     @pytest.mark.asyncio
     async def test_sync_50_files_performance(self, sync_engine, performance_vault):
@@ -154,7 +156,9 @@ class TestSmallVaultPerformance:
         assert stats["count"] == 50
         assert sync_time < 15.0  # Should complete in under 15 seconds
 
-        print(f"\n50 files sync time: {sync_time:.2f}s ({50/sync_time:.1f} files/sec)")
+        print(
+            f"\n50 files sync time: {sync_time:.2f}s ({50 / sync_time:.1f} files/sec)"
+        )
 
 
 class TestMediumVaultPerformance:
@@ -183,7 +187,7 @@ class TestMediumVaultPerformance:
         assert mem_used < 500  # Should use less than 500MB additional memory
 
         print(
-            f"\n100 files sync time: {sync_time:.2f}s ({100/sync_time:.1f} files/sec)"
+            f"\n100 files sync time: {sync_time:.2f}s ({100 / sync_time:.1f} files/sec)"
         )
         print(f"Memory used: {mem_used:.1f} MB")
 
@@ -201,7 +205,7 @@ class TestMediumVaultPerformance:
         assert batch_time < 40.0
 
         print(f"\nBatch sync (100 files): {batch_time:.2f}s")
-        print(f"Throughput: {100/batch_time:.1f} files/sec")
+        print(f"Throughput: {100 / batch_time:.1f} files/sec")
 
 
 class TestLargeVaultPerformance:
@@ -230,7 +234,7 @@ class TestLargeVaultPerformance:
         print(f"\n1000 files sync time: {sync_time:.2f}s")
         print(f"Throughput: {throughput:.1f} files/sec")
         print(f"Memory used: {mem_used:.1f} MB")
-        print(f"Memory per file: {mem_used/1000:.2f} MB")
+        print(f"Memory per file: {mem_used / 1000:.2f} MB")
 
     @pytest.mark.asyncio
     @pytest.mark.slow
@@ -293,7 +297,7 @@ class TestMemoryEfficiency:
 
         print("\nMemory scaling:")
         for size, mem in memory_per_size.items():
-            print(f"  {size} files: {mem:.1f} MB ({mem/size:.2f} MB/file)")
+            print(f"  {size} files: {mem:.1f} MB ({mem / size:.2f} MB/file)")
 
     @pytest.mark.asyncio
     async def test_graph_memory_efficiency(self, sync_engine, performance_vault):
@@ -316,7 +320,7 @@ class TestMemoryEfficiency:
         assert mem_used < 300  # Graph should be memory efficient
 
         print(f"\nGraph memory for 200 nodes: {mem_used:.1f} MB")
-        print(f"Memory per node: {mem_used/200:.2f} MB")
+        print(f"Memory per node: {mem_used / 200:.2f} MB")
 
 
 class TestThroughputBenchmarks:

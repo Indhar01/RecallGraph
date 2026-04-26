@@ -13,7 +13,7 @@ os.chdir(Path(__file__).parent)
 
 def run_command(cmd, description):
     """Run a command and display results."""
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print(f"TEST: {description}")
     print(f"CMD:  {cmd}")
     print("=" * 60)
@@ -104,7 +104,7 @@ def main():
         status = "✅ PASS" if success else "❌ FAIL"
         print(f"{status} - {desc}")
 
-    print(f"\nTotal: {passed}/{total} tests passed ({passed/total*100:.1f}%)")
+    print(f"\nTotal: {passed}/{total} tests passed ({passed / total * 100:.1f}%)")
 
     if passed == total:
         print("\n🎉 All tests passed!")

@@ -259,7 +259,7 @@ class ObsidianSync:
                 resolved.get("metadata", {}).get("memory_type")
             )
 
-            await self.kernel.remember_async(
+            node_id = await self.kernel.remember_async(
                 title=resolved["title"],
                 content=resolved["content"],
                 memory_type=memory_type,
@@ -272,6 +272,11 @@ class ObsidianSync:
                     "sync_timestamp": datetime.now().isoformat(),
                 },
             )
+            
+            # Remove any duplicate memories pointing to the same file
+            # Only for OBSIDIAN_WINS strategy to avoid interfering with other strategies
+            if node_id and self.resolver.strategy == ConflictStrategy.OBSIDIAN_WINS:
+                self._remove_duplicate_memories(str(file_path_obj), node_id)
 
             # Update sync state with file metadata
             self.state.update_file_hash(
@@ -557,7 +562,7 @@ class ObsidianSync:
                 )
 
                 try:
-                    await self.kernel.remember_async(
+                    node_id = await self.kernel.remember_async(
                         title=resolved["title"],
                         content=resolved["content"],
                         memory_type=memory_type,
@@ -570,6 +575,12 @@ class ObsidianSync:
                             "sync_timestamp": datetime.now().isoformat(),
                         },
                     )
+                    
+                    # Remove any duplicate memories pointing to the same file
+                    # Only for OBSIDIAN_WINS strategy to avoid interfering with other strategies
+                    if node_id and self.resolver.strategy == ConflictStrategy.OBSIDIAN_WINS:
+                        self._remove_duplicate_memories(str(md_file), node_id)
+                        
                 except Exception as remember_error:
                     # Record error and re-raise to outer handler
                     self._record_error(
@@ -656,8 +667,8 @@ class ObsidianSync:
                     current = self.parser.parse_file(file_path)
 
                     # Check for conflicts
-                    if self.resolver.detect_conflict(memory_data, current):
-                        resolved = self.resolver.resolve(memory_data, current)
+                    if self.resolver.detect_conflict(current, memory_data):
+                        resolved = self.resolver.resolve(current, memory_data, str(file_path))
                         stats["conflicts"] += 1
                         self.state.add_conflict(
                             str(file_path),
@@ -775,7 +786,7 @@ class ObsidianSync:
                 )
 
                 try:
-                    await self.kernel.remember_async(
+                    node_id = await self.kernel.remember_async(
                         title=resolved["title"],
                         content=resolved["content"],
                         memory_type=memory_type,
@@ -788,6 +799,12 @@ class ObsidianSync:
                             "sync_timestamp": datetime.now().isoformat(),
                         },
                     )
+                    
+                    # Remove any duplicate memories pointing to the same file
+                    # Only for OBSIDIAN_WINS strategy to avoid interfering with other strategies
+                    if node_id and self.resolver.strategy == ConflictStrategy.OBSIDIAN_WINS:
+                        self._remove_duplicate_memories(str(md_file), node_id)
+                        
                 except Exception as remember_error:
                     # Record error and re-raise to outer handler
                     self._record_error(
@@ -846,8 +863,8 @@ class ObsidianSync:
                     current = self.parser.parse_file(file_path)
 
                     # Check for conflicts
-                    if self.resolver.detect_conflict(memory_data, current):
-                        resolved = self.resolver.resolve(memory_data, current)
+                    if self.resolver.detect_conflict(current, memory_data):
+                        resolved = self.resolver.resolve(current, memory_data, str(file_path))
                         stats["conflicts"] += 1
                         self.state.add_conflict(
                             str(file_path),
@@ -892,6 +909,51 @@ class ObsidianSync:
             if node.frontmatter.get("meta", {}).get("obsidian_path") == obsidian_path:
                 return node
         return None
+
+    def _find_all_memories_by_path(self, obsidian_path: str) -> List[Any]:
+        """Find all memories in MemoGraph by Obsidian path.
+
+        Args:
+            obsidian_path: Path to the Obsidian file
+
+        Returns:
+            List of MemoryNodes with matching obsidian_path
+        """
+        matches = []
+        for node in self.kernel.graph.all_nodes():
+            if node.frontmatter.get("meta", {}).get("obsidian_path") == obsidian_path:
+                matches.append(node)
+        return matches
+
+    def _remove_duplicate_memories(self, obsidian_path: str, keep_node_id: str) -> int:
+        """Remove duplicate memories pointing to same obsidian_path.
+
+        Args:
+            obsidian_path: Path to the Obsidian file
+            keep_node_id: ID of the node to keep
+
+        Returns:
+            Number of duplicate memories removed
+        """
+        all_matches = self._find_all_memories_by_path(obsidian_path)
+        removed = 0
+        
+        for node in all_matches:
+            if node.id != keep_node_id:
+                # Remove duplicate memory from graph and delete its file
+                try:
+                    # Delete the file from disk
+                    file_path = self.memograph_vault / f"{node.id}.md"
+                    if file_path.exists():
+                        file_path.unlink()
+                    
+                    # Remove from graph
+                    self.kernel.graph.remove_node(node.id)
+                    removed += 1
+                except Exception as e:
+                    print(f"Warning: Failed to remove duplicate memory {node.id}: {e}")
+        
+        return removed
 
     def _node_to_dict(self, node: Any) -> Dict[str, Any]:
         """Convert a MemoryNode to a dictionary format.
@@ -980,7 +1042,7 @@ class ObsidianSync:
             Dictionary with sync status information:
                 - last_sync: Timestamp of last sync
                 - tracked_files: Number of tracked files
-                - conflicts: List of unresolved conflicts
+                - conflicts: List of file paths with unresolved conflicts
                 - is_syncing: Whether a sync is currently in progress
                 - queue_status: Current sync queue status
                 - batch_progress: Current batch sync progress
@@ -988,10 +1050,14 @@ class ObsidianSync:
                 - performance_stats: Performance metrics
                 - state_stats: Sync state database statistics
         """
+        # Get conflicts and extract just the file paths for easier checking
+        conflicts = self.state.get_conflicts()
+        conflict_paths = [c["file_path"] for c in conflicts]
+        
         return {
             "last_sync": self.state.get_last_sync(),
             "tracked_files": len(self.state.get_tracked_files()),
-            "conflicts": self.state.get_conflicts(),
+            "conflicts": conflict_paths,
             "is_syncing": self._is_syncing,
             "queue_status": self.get_queue_status(),
             "batch_progress": self.get_batch_progress(),

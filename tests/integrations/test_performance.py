@@ -46,9 +46,9 @@ tags: [test, performance]
 
 This is test note number {i}.
 
-It contains several [[note_{(i+1) % 100}|wikilinks]] and #tags.
+It contains several [[note_{(i + 1) % 100}|wikilinks]] and #tags.
 
-Some more content here with [[note_{(i-1) % 100}]].
+Some more content here with [[note_{(i - 1) % 100}]].
 """
         note_path.write_text(content, encoding="utf-8")
         notes.append(note_path)
@@ -94,14 +94,14 @@ class TestSQLitePerformance:
         json_duration = time.time() - start
 
         # SQLite should be faster or comparable
-        assert (
-            sqlite_duration < json_duration * 2
-        ), f"SQLite ({sqlite_duration:.3f}s) should be faster than JSON ({json_duration:.3f}s)"
+        assert sqlite_duration < json_duration * 2, (
+            f"SQLite ({sqlite_duration:.3f}s) should be faster than JSON ({json_duration:.3f}s)"
+        )
 
         print(
             f"\nSQLite write: {sqlite_duration:.3f}s, JSON write: {json_duration:.3f}s"
         )
-        print(f"Speedup: {json_duration/sqlite_duration:.2f}x")
+        print(f"Speedup: {json_duration / sqlite_duration:.2f}x")
 
     def test_sqlite_vs_json_read_performance(self, temp_vaults):
         """Compare SQLite vs JSON for read operations."""
@@ -130,7 +130,7 @@ class TestSQLitePerformance:
         json_duration = time.time() - start
 
         print(f"\nSQLite read: {sqlite_duration:.3f}s, JSON read: {json_duration:.3f}s")
-        print(f"Speedup: {json_duration/sqlite_duration:.2f}x")
+        print(f"Speedup: {json_duration / sqlite_duration:.2f}x")
 
     def test_sqlite_statistics(self, sync_state):
         """Test SQLite statistics functionality."""
@@ -165,12 +165,12 @@ class TestLRUCachePerformance:
         warm_duration = time.time() - start
 
         # Warm cache should be significantly faster
-        assert (
-            warm_duration < cold_duration * 0.5
-        ), f"Cached parse ({warm_duration:.3f}s) should be much faster than cold ({cold_duration:.3f}s)"
+        assert warm_duration < cold_duration * 0.5, (
+            f"Cached parse ({warm_duration:.3f}s) should be much faster than cold ({cold_duration:.3f}s)"
+        )
 
         print(f"\nCold cache: {cold_duration:.3f}s, Warm cache: {warm_duration:.3f}s")
-        print(f"Speedup: {cold_duration/warm_duration:.2f}x")
+        print(f"Speedup: {cold_duration / warm_duration:.2f}x")
 
     def test_wikilink_extraction_caching(self, parser):
         """Test wikilink extraction caching."""
@@ -231,13 +231,13 @@ class TestWikilinkResolution:
         resolution_duration = time.time() - start
 
         # Should be very fast with index
-        assert (
-            resolution_duration < 0.1
-        ), f"Wikilink resolution should be fast with index: {resolution_duration:.3f}s"
+        assert resolution_duration < 0.1, (
+            f"Wikilink resolution should be fast with index: {resolution_duration:.3f}s"
+        )
 
         print(f"\nIndex build: {index_build_duration:.3f}s")
         print(
-            f"100 resolutions: {resolution_duration:.3f}s ({resolution_duration*10:.1f}ms each)"
+            f"100 resolutions: {resolution_duration:.3f}s ({resolution_duration * 10:.1f}ms each)"
         )
 
     def test_wikilink_resolution_case_insensitive(self, parser, sample_notes):
@@ -331,15 +331,17 @@ class TestEndToEndPerformance:
         warm_duration = time.time() - start
 
         # Warm sync should be much faster (mostly cache hits)
-        assert (
-            warm_duration < cold_duration * 0.5
-        ), f"Warm sync ({warm_duration:.3f}s) should be faster than cold ({cold_duration:.3f}s)"
+        assert warm_duration < cold_duration * 0.5, (
+            f"Warm sync ({warm_duration:.3f}s) should be faster than cold ({cold_duration:.3f}s)"
+        )
 
         print(
-            f"\nCold sync: {cold_duration:.3f}s ({cold_duration/100*1000:.1f}ms/file)"
+            f"\nCold sync: {cold_duration:.3f}s ({cold_duration / 100 * 1000:.1f}ms/file)"
         )
-        print(f"Warm sync: {warm_duration:.3f}s ({warm_duration/100*1000:.1f}ms/file)")
-        print(f"Speedup: {cold_duration/warm_duration:.2f}x")
+        print(
+            f"Warm sync: {warm_duration:.3f}s ({warm_duration / 100 * 1000:.1f}ms/file)"
+        )
+        print(f"Speedup: {cold_duration / warm_duration:.2f}x")
 
         # Check performance stats
         sync_status = sync.get_sync_status()

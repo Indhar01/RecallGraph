@@ -112,7 +112,7 @@ class TestMemoryIDGeneration:
 
         # Extract ID from frontmatter
         lines = content.split("\n")
-        id_line = [l for l in lines if l.strip().startswith("id:")][0]
+        id_line = [line for line in lines if line.strip().startswith("id:")][0]
         memory_id = id_line.split(":", 1)[1].strip().strip('"')
 
         assert memory_id is not None
@@ -137,13 +137,13 @@ class TestMemoryIDGeneration:
         content2 = path2.read_text(encoding="utf-8")
 
         id1 = (
-            [l for l in content1.split("\n") if l.strip().startswith("id:")][0]
+            [line for line in content1.split("\n") if line.strip().startswith("id:")][0]
             .split(":", 1)[1]
             .strip()
             .strip('"')
         )
         id2 = (
-            [l for l in content2.split("\n") if l.strip().startswith("id:")][0]
+            [line for line in content2.split("\n") if line.strip().startswith("id:")][0]
             .split(":", 1)[1]
             .strip()
             .strip('"')
@@ -161,7 +161,9 @@ class TestMemoryIDGeneration:
 
         path = Path(path_str)
         content = path.read_text(encoding="utf-8")
-        id_line = [l for l in content.split("\n") if l.strip().startswith("id:")][0]
+        id_line = [
+            line for line in content.split("\n") if line.strip().startswith("id:")
+        ][0]
         memory_id = id_line.split(":", 1)[1].strip().strip('"')
 
         # ID should be alphanumeric with possible hyphens
@@ -243,7 +245,7 @@ class TestCLIErrorHandling:
         nonexistent_vault = tmp_path / "nonexistent"
 
         # Creating kernel with non-existent path should create it
-        kernel = MemoryKernel(str(nonexistent_vault))
+        _kernel = MemoryKernel(str(nonexistent_vault))
         assert nonexistent_vault.exists()
 
     def test_invalid_memory_type(self, kernel: MemoryKernel):
