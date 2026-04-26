@@ -489,8 +489,8 @@ class ObsidianSync:
                     stats["conflicts"] += push_stats["conflicts"]
                     stats["errors"].extend(push_stats.get("errors", []))
 
-                # Allow other tasks to run between batches
-                await asyncio.sleep(0)
+                # Allow other tasks to run between batches (including cancellation)
+                await asyncio.sleep(0.02)
 
             if not stats["cancelled"]:
                 self.state.mark_synced()
@@ -536,6 +536,11 @@ class ObsidianSync:
         stats = {"count": 0, "conflicts": 0, "errors": []}
 
         for idx, md_file in enumerate(file_paths):
+            # Yield to the event loop on every file so that concurrent tasks
+            # (e.g. a cancellation coroutine sleeping for a real-time delay)
+            # get a chance to run and advance their timers.
+            await asyncio.sleep(0)
+
             if self._batch_cancelled:
                 raise BatchSyncCancelled()
 
