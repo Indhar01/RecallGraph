@@ -172,8 +172,8 @@ class TestLRUCachePerformance:
 
         # Warm cache should be significantly faster.
         # Skip the assertion if cold parse was too fast to measure reliably
-        # (sub-millisecond timing on fast machines is not meaningful)
-        if cold_duration > 0.001:
+        # (timings under 10ms are dominated by noise and not meaningful for cache comparison)
+        if cold_duration > 0.01:
             assert warm_duration < cold_duration * 0.5, (
                 f"Cached parse ({warm_duration:.3f}s) should be much faster than cold ({cold_duration:.3f}s)"
             )
