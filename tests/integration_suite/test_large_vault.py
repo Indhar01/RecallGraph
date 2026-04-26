@@ -294,8 +294,11 @@ class TestMemoryEfficiency:
         mem_per_file_10 = memory_per_size[10] / 10
         mem_per_file_100 = memory_per_size[100] / 100
 
-        # Memory per file shouldn't increase significantly
-        assert mem_per_file_100 < mem_per_file_10 * 2
+        # Memory per file shouldn't increase significantly.
+        # Use a floor of 0.1 MB/file to handle near-zero measurements
+        # (OS memory management may not show measurable increase for small vaults)
+        baseline = max(mem_per_file_10, 0.1)
+        assert mem_per_file_100 < baseline * 2
 
         print("\nMemory scaling:")
         for size, mem in memory_per_size.items():
