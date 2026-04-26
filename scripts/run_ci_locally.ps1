@@ -176,7 +176,7 @@ if (-not $TestOnly) {
     $ruffLintOutput = ruff check . 2>&1
     $ruffLintSuccess = $LASTEXITCODE -eq 0
 
-    if ($ShowDetails -or -not $2Success) {
+    if ($ShowDetails -or -not $ruffLintSuccess) {
         Write-Host $ruffLintOutput
     }
 
@@ -187,7 +187,7 @@ if (-not $TestOnly) {
     $ruffFormatOutput = ruff format --check . 2>&1
     $ruffFormatSuccess = $LASTEXITCODE -eq 0
 
-    if ($ShowDetails -or -not $2Success) {
+    if ($ShowDetails -or -not $ruffFormatSuccess) {
         Write-Host $ruffFormatOutput
     }
 
@@ -198,7 +198,7 @@ if (-not $TestOnly) {
     $mypyOutput = mypy memograph/ --config-file=pyproject.toml 2>&1
     $mypySuccess = $LASTEXITCODE -eq 0
 
-    if ($ShowDetails -or -not $2Success) {
+    if ($ShowDetails -or -not $mypySuccess) {
         Write-Host $mypyOutput
     }
 
@@ -240,7 +240,7 @@ if (-not $LintOnly) {
     $testOutput = pytest @testArgs 2>&1
     $testSuccess = $LASTEXITCODE -eq 0
 
-    if ($ShowDetails -or -not $2Success) {
+    if ($ShowDetails -or -not $testSuccess) {
         Write-Host $testOutput
     }
 
@@ -252,7 +252,7 @@ if (-not $LintOnly) {
         $coverageOutput = coverage report --fail-under=40 2>&1
         $coverageSuccess = $LASTEXITCODE -eq 0
 
-        if ($ShowDetails -or -not $2Success) {
+        if ($ShowDetails -or -not $coverageSuccess) {
             Write-Host $coverageOutput
         }
 
@@ -279,7 +279,7 @@ if (-not $LintOnly -and -not $Fast) {
     $enhancedOutput = pytest @enhancedTests -v --cov=memograph.core --cov=memograph.storage --cov-report=term 2>&1
     $enhancedSuccess = $LASTEXITCODE -eq 0
 
-    if ($ShowDetails -or -not $2Success) {
+    if ($ShowDetails -or -not $enhancedSuccess) {
         Write-Host $enhancedOutput
     }
 
@@ -301,7 +301,7 @@ if (-not $LintOnly -and -not $Fast) {
     $integrationOutput = pytest @integrationTests -v 2>&1
     $integrationSuccess = $LASTEXITCODE -eq 0
 
-    if ($ShowDetails -or -not $2Success) {
+    if ($ShowDetails -or -not $integrationSuccess) {
         Write-Host $integrationOutput
     }
 
@@ -316,7 +316,7 @@ if (-not $TestOnly -and -not $Fast) {
     $precommitOutput = pre-commit run --all-files 2>&1
     $precommitSuccess = $LASTEXITCODE -eq 0
 
-    if ($ShowDetails -or -not $2Success) {
+    if ($ShowDetails -or -not $precommitSuccess) {
         Write-Host $precommitOutput
     }
 
