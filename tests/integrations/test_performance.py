@@ -184,6 +184,4 @@ class TestLRUCachePerformance:
         start = time.time()
         for note in sample_notes[:20]:
             parser.parse_file(note)
-        cold_duration = time.time() - start
-
-        # Parse same
+        cold_duration
