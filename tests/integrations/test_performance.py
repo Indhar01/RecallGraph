@@ -14,12 +14,6 @@ from pathlib import Path
 import pytest
 
 from memograph.integrations.obsidian.parser import ObsidianParser
-from memograph.integrations.obsidian.performance_metrics import (
-    PerformanceTracker,
-    get_tracker,
-    reset_tracker,
-)
-from memograph.integrations.obsidian.sync import ObsidianSync
 from memograph.integrations.obsidian.sync_state import SyncState
 
 
@@ -178,8 +172,8 @@ class TestLRUCachePerformance:
 
         print(f"\nCold cache: {cold_duration:.3f}s, Warm cache: {warm_duration:.3f}s")
 
-        # Warm cache should be faster or comparable
-        # Use generous multiplier to avoid flakiness on slow CI machines
+        # Warm cache should be faster or comparable.
+        # Use generous multiplier to avoid flakiness on slow CI machines.
         assert warm_duration < max(
             cold_duration * 10, 5.0
         ), f"Warm cache ({warm_duration:.3f}s) unexpectedly slower than cold ({cold_duration:.3f}s)"
@@ -187,3 +181,10 @@ class TestLRUCachePerformance:
     def test_cache_hit_rate(self, parser, sample_notes):
         """Test that cache hit rate improves on repeated access."""
         # Parse all notes once (cold)
+        for note in sample_notes[:20]:
+            parser.parse_file(note)
+
+        # Parse same notes again (warm cache)
+        start = time.time()
+        for note in sample_notes[:20]:
+            parser.parse_file(
