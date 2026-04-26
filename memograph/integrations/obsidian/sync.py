@@ -744,7 +744,7 @@ class ObsidianSync:
         Returns:
             True if a batch sync was in progress and will be cancelled
         """
-        if self._is_syncing or self._batch_cancelled:
+        if self._is_syncing:
             self._batch_cancelled = True
             return True
         return False
@@ -786,11 +786,31 @@ class ObsidianSync:
             Dictionary with pull statistics:
                 - count: Number of notes pulled
                 - conflicts: Number of conflicts
+                - errors: List of error messages
         """
-        stats = {"count": 0, "conflicts": 0}
+        stats = {"count": 0, "conflicts": 0, "errors": []}
 
         # Get all markdown files from Obsidian vault
         md_files = list(self.vault_path.rglob("*.md"))
+
+        # Detect and handle file deletions
+        # Get all tracked files and check if they still exist
+        tracked_files = set(self.state.get_tracked_files())
+        existing_files = {str(f) for f in md_files}
+        deleted_files = tracked_files - existing_files
+
+        for deleted_file in deleted_files:
+            # Find and remove memory associated with this deleted file
+            existing = self._find_memory_by_path(deleted_file)
+            if existing:
+                # Delete the memory file
+                memory_file = self.memograph_vault / f"{existing.id}.md"
+                if memory_file.exists():
+                    memory_file.unlink()
+                # Remove from graph
+                self.kernel.graph.remove_node(existing.id)
+            # Remove from state tracking
+            self.state.remove_file(deleted_file)
 
         for md_file in md_files:
             # Skip if file doesn't exist
@@ -811,8 +831,20 @@ class ObsidianSync:
 
                 self.perf_tracker.record_cache_miss()
 
-                # Check if exists in MemoGraph
+                # Check if exists in MemoGraph by path
                 existing = self._find_memory_by_path(str(md_file))
+
+                # If not found by path, check by title (file may have been moved)
+                if not existing:
+                    existing = self._find_memory_by_title(note_data["title"])
+                    if existing:
+                        # File was moved - update old path tracking
+                        old_path = existing.frontmatter.get("meta", {}).get(
+                            "obsidian_path"
+                        )
+                        if old_path and old_path != str(md_file):
+                            # Remove old path from tracking
+                            self.state.remove_file(old_path)
 
                 if existing:
                     # Check for conflicts
@@ -873,11 +905,10 @@ class ObsidianSync:
                 stats["count"] += 1
 
             except Exception as e:
+                error_msg = f"{md_file}: {str(e)}"
                 print(f"Error syncing {md_file}: {e}")
                 self._record_error(e, transient=self._is_transient_error(e))
-                if "errors" not in stats:
-                    stats["errors"] = []
-                stats["errors"].append(f"{md_file}: {str(e)}")
+                stats["errors"].append(error_msg)
                 # Continue processing other files
                 continue
 

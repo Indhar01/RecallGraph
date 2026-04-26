@@ -51,6 +51,8 @@ def sync_engine(performance_vault, memograph_vault):
 
 def create_test_vault(vault_path: Path, num_files: int) -> list[Path]:
     """Create a test vault with specified number of files."""
+    # Ensure vault directory exists
+    vault_path.mkdir(parents=True, exist_ok=True)
     files = []
 
     for i in range(num_files):
