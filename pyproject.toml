@@ -87,8 +87,12 @@ web = [
     "fastapi>=0.104.0",
     "uvicorn[standard]>=0.24.0",
 ]
+integrations = [
+    "watchdog>=3.0.0",
+    "python-frontmatter>=1.0.0",
+]
 all = [
-    "memograph[openai,anthropic,ollama,litellm,embeddings]",
+    "memograph[openai,anthropic,ollama,litellm,embeddings,integrations]",
 ]
 dev = [
     "pytest>=7.4.0",
@@ -104,6 +108,8 @@ dev = [
     "rich>=13.0.0",
     "types-PyYAML>=6.0",
     "types-requests>=2.31.0",
+    "watchdog>=3.0.0",
+    "python-frontmatter>=1.0.0",
 ]
 
 [project.urls]

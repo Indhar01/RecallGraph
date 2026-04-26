@@ -24,7 +24,7 @@ mcp>=1.0.0
 
 # For Integrations: pip install -e .[integrations]
 # watchdog>=3.0.0  # File system monitoring (Obsidian)
-# frontmatter>=4.0.0  # Markdown frontmatter parsing (Obsidian)
+# python-frontmatter>=1.0.0  # Markdown frontmatter parsing (Obsidian)
 # notion-client>=2.0.0  # Notion API client (Notion)
 
 # Development Dependencies
