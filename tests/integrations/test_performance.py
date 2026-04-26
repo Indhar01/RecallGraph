@@ -187,3 +187,5 @@ class TestLRUCachePerformance:
         cold_duration = time.time() - start
 
         # Parse same notes again (warm cache)
+        start = time.time()
+        for note in sample_notes
