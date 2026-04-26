@@ -803,8 +803,9 @@ def main():
     # Filter options
     list_parser.add_argument(
         "--tags",
-        type=lambda s: [t.strip() for t in s.split(",")],
-        help="Filter by tags (comma-separated, e.g., python,coding)",
+        nargs="*",
+        default=[],
+        help="Filter by tags (space-separated, e.g., --tags python docker)",
     )
     list_parser.add_argument(
         "--type",
