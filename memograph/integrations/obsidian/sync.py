@@ -119,18 +119,24 @@ class ObsidianSync:
                     self.kernel.ingest()
 
                 if direction in ["pull", "bidirectional"]:
-                    pull_stats = await self.pull_from_obsidian()
-                    stats["pulled"] = pull_stats["count"]
-                    stats["conflicts"] += pull_stats["conflicts"]
-                    if "errors" in pull_stats:
-                        stats["errors"].extend(pull_stats["errors"])
+                    try:
+                        pull_stats = await self.pull_from_obsidian()
+                        stats["pulled"] = pull_stats["count"]
+                        stats["conflicts"] += pull_stats["conflicts"]
+                        if "errors" in pull_stats:
+                            stats["errors"].extend(pull_stats["errors"])
+                    except (ConnectionError, TimeoutError, ConnectionRefusedError) as e:
+                        stats["errors"].append(f"Network error during pull: {str(e)}")
 
                 if direction in ["push", "bidirectional"]:
-                    push_stats = await self.push_to_obsidian()
-                    stats["pushed"] = push_stats["count"]
-                    stats["conflicts"] += push_stats["conflicts"]
-                    if "errors" in push_stats:
-                        stats["errors"].extend(push_stats["errors"])
+                    try:
+                        push_stats = await self.push_to_obsidian()
+                        stats["pushed"] = push_stats["count"]
+                        stats["conflicts"] += push_stats["conflicts"]
+                        if "errors" in push_stats:
+                            stats["errors"].extend(push_stats["errors"])
+                    except (ConnectionError, TimeoutError, ConnectionRefusedError) as e:
+                        stats["errors"].append(f"Network error during push: {str(e)}")
 
                 self.state.mark_synced()
 
@@ -215,8 +221,20 @@ class ObsidianSync:
         file_path_obj = Path(file_path)
 
         # Handle deleted files
-        if event_type == "deleted":
-            # TODO: Implement deletion sync
+        if event_type == "deleted" or (
+            event_type != "created" and not file_path_obj.exists()
+        ):
+            # Find and remove memory associated with this path
+            existing = self._find_memory_by_path(str(file_path_obj))
+            if existing:
+                # Delete the memory file
+                memory_file = self.memograph_vault / f"{existing.id}.md"
+                if memory_file.exists():
+                    memory_file.unlink()
+                # Remove from graph
+                self.kernel.graph.remove_node(existing.id)
+                # Clear from state
+                self.state.update_file_hash(str(file_path_obj), "")
             return
 
         # Ensure file exists and is markdown
@@ -421,12 +439,13 @@ class ObsidianSync:
                     stats["cancelled"] = True
                     break
 
-                # Check if error rate limit exceeded
-                if self._error_count >= self._error_rate_limit:
+                # Check if error rate limit exceeded BEFORE processing batch
+                if len(stats.get("errors", [])) >= self._error_rate_limit:
                     stats["rate_limited"] = True
-                    stats["errors"].append(
-                        f"Error rate limit exceeded ({self._error_count} errors)"
-                    )
+                    if "Error rate limit exceeded" not in str(stats.get("errors", [])):
+                        stats["errors"].append(
+                            f"Error rate limit exceeded ({len(stats['errors'])} errors)"
+                        )
                     break
 
                 batch_end = min(batch_start + batch_size, total_files)
@@ -524,6 +543,10 @@ class ObsidianSync:
                     "pulling",
                 )
 
+            # Skip if file doesn't exist
+            if not md_file.exists():
+                continue
+
             try:
                 # Parse Obsidian note
                 note_data = self.parser.parse_file(md_file)
@@ -538,8 +561,20 @@ class ObsidianSync:
 
                 self.perf_tracker.record_cache_miss()
 
-                # Check if exists in MemoGraph
+                # Check if exists in MemoGraph by path
                 existing = self._find_memory_by_path(str(md_file))
+
+                # If not found by path, check by title (file may have been moved)
+                if not existing:
+                    existing = self._find_memory_by_title(note_data["title"])
+                    if existing:
+                        # File was moved - update the path in metadata
+                        old_path = existing.frontmatter.get("meta", {}).get(
+                            "obsidian_path"
+                        )
+                        if old_path and old_path != str(md_file):
+                            # This is a moved file, we'll update it
+                            pass
 
                 if existing:
                     # Check for conflicts
@@ -601,7 +636,12 @@ class ObsidianSync:
 
             except Exception as e:
                 self._record_error(e, transient=self._is_transient_error(e))
-                stats["errors"].append(f"{md_file}: {str(e)}")
+                error_msg = f"{md_file}: {str(e)}"
+                if "errors" not in stats:
+                    stats["errors"] = []
+                stats["errors"].append(error_msg)
+                # Continue processing other files
+                continue
 
         return stats
 
@@ -753,6 +793,10 @@ class ObsidianSync:
         md_files = list(self.vault_path.rglob("*.md"))
 
         for md_file in md_files:
+            # Skip if file doesn't exist
+            if not md_file.exists():
+                continue
+
             try:
                 # Parse Obsidian note
                 note_data = self.parser.parse_file(md_file)
@@ -831,8 +875,11 @@ class ObsidianSync:
             except Exception as e:
                 print(f"Error syncing {md_file}: {e}")
                 self._record_error(e, transient=self._is_transient_error(e))
-                stats["errors"] = stats.get("errors", [])
+                if "errors" not in stats:
+                    stats["errors"] = []
                 stats["errors"].append(f"{md_file}: {str(e)}")
+                # Continue processing other files
+                continue
 
         return stats
 
@@ -917,6 +964,23 @@ class ObsidianSync:
         """
         for node in self.kernel.graph.all_nodes():
             if node.frontmatter.get("meta", {}).get("obsidian_path") == obsidian_path:
+                return node
+        return None
+
+    def _find_memory_by_title(self, title: str) -> Optional[Any]:
+        """Find a memory by title (for detecting moved files).
+
+        Args:
+            title: Memory title to search for
+
+        Returns:
+            MemoryNode if found, None otherwise
+        """
+        for node in self.kernel.graph.all_nodes():
+            if (
+                node.title == title
+                and node.frontmatter.get("meta", {}).get("source") == "obsidian"
+            ):
                 return node
         return None
 
