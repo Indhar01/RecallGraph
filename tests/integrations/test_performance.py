@@ -174,8 +174,8 @@ class TestLRUCachePerformance:
 
         # Warm cache should be faster or comparable.
         # Use generous multiplier to avoid flakiness on slow CI machines.
-        assert warm_duration < max(
-            cold_duration * 10, 5.0
+        assert (
+            warm_duration < max(cold_duration * 10, 5.0)
         ), f"Warm cache ({warm_duration:.3f}s) unexpectedly slower than cold ({cold_duration:.3f}s)"
 
     def test_cache_hit_rate(self, parser, sample_notes):
