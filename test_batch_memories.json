@@ -1,0 +1,16 @@
+[
+  {
+    "title": "Batch Memory 1",
+    "content": "This is a test memory created via batch import",
+    "memory_type": "semantic",
+    "tags": ["batch", "test"],
+    "salience": 0.7
+  },
+  {
+    "title": "Batch Memory 2",
+    "content": "Another test memory for batch operations",
+    "memory_type": "fact",
+    "tags": ["batch", "test", "automation"],
+    "salience": 0.8
+  }
+]

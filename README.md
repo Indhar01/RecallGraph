@@ -15,6 +15,8 @@
 
 A graph-based memory system for LLMs with intelligent retrieval. MemoGraph provides a powerful solution to the LLM memory problem by combining knowledge graphs, hybrid retrieval, and semantic search.
 
+> **📊 Project Status:** MemoGraph is **production-ready**! See [docs/PROJECT_STATUS.md](docs/PROJECT_STATUS.md) for current status and [docs/FUTURE_ENHANCEMENTS.md](docs/FUTURE_ENHANCEMENTS.md) for optional improvements.
+
 ## ✨ Features
 
 - **🤖 Smart Auto-Organization Engine**: Automatically extract structured information from memories using LLMs
@@ -23,6 +25,8 @@ A graph-based memory system for LLMs with intelligent retrieval. MemoGraph provi
   - Action items with assignees and deadlines
   - Decisions, questions, and sentiment analysis
   - Risks, ideas, and timeline events
+- **🏷️ AI-Powered Tag Suggestions**: Automatically suggest relevant tags using semantic analysis and content structure detection
+- **🔗 AI-Powered Link Suggestions**: Intelligently recommend wikilinks to related notes using semantic similarity and graph analysis
 - **Graph-Based Memory**: Navigate knowledge using bidirectional wikilinks and backlinks
 - **Hybrid Retrieval**: Combines keyword matching, graph traversal, and optional vector embeddings
 - **Markdown-Native**: Human-readable markdown files with YAML frontmatter
@@ -95,6 +99,10 @@ print(context)
 
 MemoGraph includes a full-featured MCP server for seamless integration with AI assistants like **Cline** and **Claude Desktop**.
 
+**📖 New to MemoGraph MCP?** See the **[MCP User Guide](docs/MCP_USER_GUIDE.md)** for practical usage instructions and examples!
+
+**🚨 Having connection issues?** See **[Setup & Troubleshooting Guide](docs/MCP_SETUP_TROUBLESHOOTING.md)** - Common fixes for "cannot connect" errors!
+
 ### 19 Available Tools
 
 | Category | Tools | Description |
@@ -147,15 +155,40 @@ Add to your `claude_desktop_config.json`:
 
 ### Install from MCP Registry
 
-**NEW**: MemoGraph is now available in the official MCP Registry!
+**NEW**: MemoGraph is now available in the official MCP Registry! 🎉
+
+**Registry URL**: [https://github.com/modelcontextprotocol/servers/tree/main/src/memograph](https://github.com/modelcontextprotocol/servers)
+
+#### Step 1: Install MemoGraph
+
+First, install the Python package:
 
 ```bash
-# Install via MCP CLI (if available)
-mcp install io.github.indhar01/memograph
-
-# Or manually configure in your MCP client:
+pip install memograph
 ```
 
+#### Step 2: Configure in Your MCP Client
+
+The MCP Registry provides the configuration template. Add to your client's config file:
+
+**For Cline** (`~/.cline/mcp_settings.json`):
+```json
+{
+  "mcp": {
+    "servers": {
+      "memograph": {
+        "command": "python",
+        "args": ["-m", "memograph.mcp.run_server"],
+        "env": {
+          "MEMOGRAPH_VAULT": "/path/to/your/vault"
+        }
+      }
+    }
+  }
+}
+```
+
+**For Claude Desktop** (`claude_desktop_config.json`):
 ```json
 {
   "mcpServers": {
@@ -163,18 +196,21 @@ mcp install io.github.indhar01/memograph
       "command": "python",
       "args": ["-m", "memograph.mcp.run_server"],
       "env": {
-        "MEMOGRAPH_VAULT": "~/my-vault"
+        "MEMOGRAPH_VAULT": "/path/to/your/vault"
       }
     }
   }
 }
 ```
 
-**Benefits of MCP Registry:**
+**Benefits of MCP Registry Listing:**
 - ✅ Official registry backed by Anthropic, GitHub, and Microsoft
-- ✅ Automatic version updates from PyPI
 - ✅ Discoverable by all MCP-compatible clients
-- ✅ Verified and trusted installation
+- ✅ Verified server card and metadata
+- ✅ Direct link from PyPI package
+- ✅ Trusted by the MCP community
+
+**Note**: The registry uses the PyPI package version. When you `pip install memograph`, you automatically get the latest registry-listed version.
 
 See **[MCP_REGISTRY_GUIDE.md](docs/MCP_REGISTRY_GUIDE.md)** for complete submission and configuration guide.
 
@@ -192,6 +228,16 @@ Once configured, use natural language with your AI assistant:
 ```
 
 See **[CONFIG_REFERENCE.md](memograph/mcp/CONFIG_REFERENCE.md)** for complete MCP configuration guide.
+
+### Using Auto-Save Hooks
+
+MemoGraph provides autonomous hooks to save conversations automatically:
+
+- ⚠️ **Important**: Hooks are passive tools - see [Autonomous Hooks Guide](docs/AUTONOMOUS_HOOKS_GUIDE.md) for setup
+- 📝 Quick fix: Add custom instructions to Claude Desktop (instructions in guide)
+- 🔧 Configure with `MEMOGRAPH_AUTONOMOUS_MODE=true`
+
+[Read the full Autonomous Hooks User Guide →](docs/AUTONOMOUS_HOOKS_GUIDE.md)
 
 ## 🎯 CLI Usage
 
@@ -257,7 +303,199 @@ Check your environment and connection to LLM providers:
 
 ```bash
 memograph --vault ~/my-vault doctor
+
+### Import Documents
+
+Import documents (TXT, PDF, DOCX) and convert them to markdown:
+
+```bash
+# Import a single file
+memograph --vault ~/my-vault import document.pdf --type episodic
+
+# Import entire folder
+memograph --vault ~/my-vault import ~/Documents --recursive
+
+# Preview files without importing (dry run)
+memograph --vault ~/my-vault import ~/Documents --dry-run
+
+# Auto-ingest after import
+memograph --vault ~/my-vault import document.pdf --auto-ingest
 ```
+
+### Batch Operations
+
+Efficiently manage multiple memories at once:
+
+```bash
+# Bulk create memories from JSON/CSV
+memograph --vault ~/my-vault batch-create memories.json
+
+# Bulk update memories by filter
+memograph --vault ~/my-vault batch-update \
+    --filter-tags outdated \
+    --add-tags reviewed \
+    --salience 0.8
+
+# Bulk delete with safety checks
+memograph --vault ~/my-vault batch-delete \
+    --filter-type episodic \
+    --filter-max-salience 0.3 \
+    --dry-run
+```
+
+### Data Management
+
+Export, backup, and restore your vault:
+
+```bash
+# Export vault to JSON/CSV/Markdown
+memograph --vault ~/my-vault export --format json --output backup.json
+
+# Create timestamped backup
+memograph --vault ~/my-vault backup --output ./backups
+
+# Restore from backup
+memograph --vault ~/my-vault import-backup backup.zip
+```
+
+### Configuration & Statistics
+
+Manage settings and view vault analytics:
+
+```bash
+# View vault statistics
+memograph --vault ~/my-vault stats
+
+# Configure settings
+memograph config set embedding_provider openai
+memograph config get embedding_provider
+memograph config list
+
+# Manage profiles
+memograph config profile create work --vault ~/work-vault
+memograph config profile use work
+```
+
+### MCP Setup
+
+Interactive wizard to configure MCP server for Claude Desktop or Cline:
+
+```bash
+# Run interactive setup wizard
+memograph setup-mcp
+
+# Verify MCP configuration
+memograph verify-mcp
+```
+
+**📖 Complete CLI Documentation:** See **[CLI Usage Guide](MEMOGRAPH_CLI_USAGE_GUIDE.md)** for detailed documentation with 200+ examples covering all 24 commands.
+
+### 🤖 AI Features
+
+MemoGraph includes powerful AI-powered features to enhance your knowledge management workflow. See **[AI Features Guide](docs/guides/AI_FEATURES.md)** for complete documentation.
+
+#### 🏷️ AutoTagger - Intelligent Tag Suggestions
+
+Automatically suggest relevant tags using semantic analysis, content structure, and existing patterns:
+
+```bash
+# Suggest tags for a note
+memograph suggest-tags note.md
+
+# Apply high-confidence suggestions automatically
+memograph suggest-tags note.md --apply
+
+# Adjust confidence threshold and limit
+memograph suggest-tags note.md --min-confidence 0.5 --max-suggestions 10
+```
+
+**Features:** Frequency-based extraction • Semantic similarity • Structure detection • Pattern learning • Confidence scoring
+
+#### 🔗 LinkSuggester - Smart Wikilink Recommendations
+
+Intelligently recommend wikilinks to related notes using semantic similarity and graph analysis:
+
+```bash
+# Suggest links for a note
+memograph suggest-links note.md
+
+# Apply suggestions automatically
+memograph suggest-links note.md --apply
+
+# Show bidirectional link opportunities
+memograph suggest-links note.md --show-bidirectional
+```
+
+**Features:** Semantic search • Keyword matching • Graph-based suggestions • Bidirectional detection • Target previews
+
+#### 🔍 GapDetector - Knowledge Base Analysis
+
+Identify missing topics, weak coverage, and isolated notes in your vault:
+
+```bash
+# Detect all gaps
+memograph detect-gaps
+
+# Focus on high-severity gaps
+memograph detect-gaps --min-severity 0.7
+
+# Export results to JSON
+memograph detect-gaps --output json > gaps.json
+```
+
+**Gap Types:** Missing Topics • Weak Coverage • Isolated Notes • Missing Links
+
+#### 📊 Knowledge Analysis - Comprehensive Insights
+
+Get comprehensive analysis of your entire knowledge base:
+
+```bash
+# Full analysis with all features
+memograph analyze-knowledge
+
+# Export detailed report to JSON
+memograph analyze-knowledge --output json > analysis.json
+```
+
+**Analysis Includes:** Vault statistics • Topic clustering • Learning paths • Gap detection • Connection analysis
+
+#### Python API for AI Features
+
+```python
+from memograph import MemoryKernel
+from memograph.ai import AutoTagger, LinkSuggester, GapDetector
+
+kernel = MemoryKernel("~/my-vault")
+kernel.ingest()
+
+# Get tag suggestions
+tagger = AutoTagger(kernel, min_confidence=0.4)
+suggestions = await tagger.suggest_tags(
+    content="Python is great for data science",
+    title="Data Science with Python"
+)
+
+# Get link suggestions
+suggester = LinkSuggester(kernel, min_confidence=0.5)
+links = await suggester.suggest_links(
+    content="Python async programming tutorial",
+    title="Async Python"
+)
+
+# Detect knowledge gaps
+detector = GapDetector(kernel, min_severity=0.5)
+gaps = await detector.detect_gaps()
+
+# Comprehensive analysis
+analysis = await detector.analyze_knowledge_base()
+```
+
+**📖 Complete Documentation:**
+- **[AI Features Guide](docs/guides/AI_FEATURES.md)** - Comprehensive guide with examples
+- **[Web UI Guide](docs/guides/WEB_UI_GUIDE.md)** - Using AI features in the browser
+- **[MCP AI Tools Guide](docs/guides/MCP_AI_TOOLS.md)** - AI features for Claude & Cline
+
+**💡 Use Cases:** Auto-organize notes • Discover connections • Identify gaps • Maintain consistency • Build learning paths
 
 ## 📖 Core Concepts
 
@@ -359,7 +597,14 @@ We maintain high code quality standards:
 
 ## 📚 Documentation
 
+### Getting Started
+- **[MCP User Guide](docs/MCP_USER_GUIDE.md)** - ⭐ **Start here!** Complete guide for using MemoGraph MCP
+- **[Setup & Troubleshooting](docs/MCP_SETUP_TROUBLESHOOTING.md)** - 🚨 **Can't connect?** Step-by-step fixes for connection issues
+- **[MCP Testing Guide](docs/MCP_TESTING_GUIDE.md)** - Testing your MCP server after setup
+
+### For Developers & Contributors
 - **[MCP Registry Guide](docs/MCP_REGISTRY_GUIDE.md)** - Publishing to official MCP Registry
+- **[Versioning Strategy](docs/VERSIONING.md)** - Semantic versioning and release planning
 - **[AGENTS.md](AGENTS.md)** - Guide for AI agents working with this codebase
 - **[Contributing Guide](CONTRIBUTING.md)** - How to contribute to the project
 - **[Code of Conduct](CODE_OF_CONDUCT.md)** - Community guidelines
@@ -387,9 +632,36 @@ Inspired by the need for better memory management in LLM applications. Built wit
 - **Issues**: [GitHub Issues](https://github.com/Indhar01/MemoGraph/issues)
 - **Discussions**: [GitHub Discussions](https://github.com/Indhar01/MemoGraph/discussions)
 
+## 📣 Community & Feedback
+
+We value community feedback and contributions! Here's how to get involved:
+
+### Report Issues
+Found a bug or have a feature request? [Open an issue](https://github.com/Indhar01/MemoGraph/issues/new) on GitHub.
+
+### Discussions
+Join the conversation in [GitHub Discussions](https://github.com/Indhar01/MemoGraph/discussions):
+- Ask questions
+- Share use cases
+- Suggest improvements
+- Show what you've built
+
+### Contributing
+We welcome contributions! See our [Contributing Guide](CONTRIBUTING.md) for details on:
+- Code contributions
+- Documentation improvements
+- Bug reports and feature requests
+- Community support
+
+### Stay Updated
+- ⭐ Star the repository on [GitHub](https://github.com/Indhar01/MemoGraph)
+- 👁️ Watch for updates and releases
+- 📦 Follow the project on [PyPI](https://pypi.org/project/memograph/)
+- 🔗 Check out the [MCP Registry listing](https://github.com/modelcontextprotocol/servers/tree/main/src/memograph)
+
 ## 🚦 Status
 
-**Current Version**: 0.1.0 (Alpha - Marketplace Ready)
+**Current Version**: 0.1.1 (Alpha - Marketplace Ready)
 
 This project is in active development with a focus on code quality and stability:
 
@@ -401,13 +673,15 @@ This project is in active development with a focus on code quality and stability
 - ⚠️ API may change in minor versions until v1.0.0
 
 **Recent Improvements**:
-- 🎉 **Published to official MCP Registry** (io.github.indhar01/memograph)
+- 🎉 **Published to official MCP Registry** ([io.github.indhar01/memograph](https://github.com/modelcontextprotocol/servers/tree/main/src/memograph))
+- 📦 **Version 0.1.1 Released** with registry integration improvements
 - Enhanced code quality with Ruff linting and formatting
 - Added comprehensive type checking with MyPy
 - Improved project structure and organization
 - Updated MCP server with 19 tools including autonomous features and graph operations
 - Added AGENTS.md for AI assistant integration
 - Created comprehensive MCP Registry submission guide
+- Improved documentation with accurate installation instructions
 
 ---
 

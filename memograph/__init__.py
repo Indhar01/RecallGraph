@@ -1,4 +1,5 @@
 from .core.access_tracker import AccessTracker
+from .core.config import MemographConfig
 from .core.enums import EntityType, MemoryType
 from .core.extractor import SmartAutoOrganizer
 from .core.gam_retriever import GAMRetriever
@@ -23,4 +24,5 @@ __all__ = [
     "GAMScorer",
     "GAMRetriever",
     "AccessTracker",
+    "MemographConfig",
 ]

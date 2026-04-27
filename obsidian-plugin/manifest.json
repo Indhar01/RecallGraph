@@ -1,0 +1,10 @@
+{
+  "id": "memograph-sync",
+  "name": "MemoGraph Sync",
+  "version": "0.2.0",
+  "minAppVersion": "0.15.0",
+  "description": "Sync your Obsidian vault with MemoGraph for AI-powered knowledge management with auto-sync, conflict resolution, and batch operations",
+  "author": "MemoGraph Team",
+  "authorUrl": "https://github.com/Indhar01/MemoGraph",
+  "isDesktopOnly": false
+}

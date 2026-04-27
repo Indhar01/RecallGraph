@@ -276,7 +276,12 @@ class ActionLogger:
                 logger.info("Cleared all action history")
             else:
                 history = self._read_history()
-                cutoff_ns = int(before_date.timestamp() * 1_000_000_000)
+                # Compute cutoff in nanoseconds without floating point multiplication
+                # to avoid precision loss (before_date has microsecond precision)
+                cutoff_ns = (
+                    int(before_date.timestamp()) * 1_000_000_000
+                    + before_date.microsecond * 1_000
+                )
 
                 def _is_on_or_after_cutoff(action: dict[str, Any]) -> bool:
                     action_ns = action.get("timestamp_ns")

@@ -1,0 +1,12 @@
+Collecting notion-client
+  Downloading notion_client-3.0.0-py2.py3-none-any.whl.metadata (14 kB)
+Requirement already satisfied: httpx>=0.23.0 in c:\python 3.11.9\lib\site-packages (from notion-client) (0.28.1)
+Requirement already satisfied: anyio in c:\python 3.11.9\lib\site-packages (from httpx>=0.23.0->notion-client) (4.12.1)
+Requirement already satisfied: certifi in c:\python 3.11.9\lib\site-packages (from httpx>=0.23.0->notion-client) (2026.1.4)
+Requirement already satisfied: httpcore==1.* in c:\python 3.11.9\lib\site-packages (from httpx>=0.23.0->notion-client) (1.0.9)
+Requirement already satisfied: idna in c:\python 3.11.9\lib\site-packages (from httpx>=0.23.0->notion-client) (3.11)
+Requirement already satisfied: h11>=0.16 in c:\python 3.11.9\lib\site-packages (from httpcore==1.*->httpx>=0.23.0->notion-client) (0.16.0)
+Requirement already satisfied: typing_extensions>=4.5 in c:\users\indirakumars\appdata\roaming\python\python311\site-packages (from anyio->httpx>=0.23.0->notion-client) (4.15.0)
+Downloading notion_client-3.0.0-py2.py3-none-any.whl (18 kB)
+Installing collected packages: notion-client
+Successfully installed notion-client-3.0.0

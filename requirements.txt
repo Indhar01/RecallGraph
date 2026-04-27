@@ -1,4 +1,4 @@
-# Core dependencies for mnemo-vault
+# Core dependencies for memograph
 # For installation, prefer: pip install -e .
 # Or with all optional dependencies: pip install -e .[all]
 
@@ -21,6 +21,11 @@ mcp>=1.0.0
 # For Embeddings: pip install -e .[embeddings]
 # sentence-transformers>=2.2.0
 # numpy>=1.24.0
+
+# For Integrations: pip install -e .[integrations]
+# watchdog>=3.0.0  # File system monitoring (Obsidian)
+# python-frontmatter>=1.0.0  # Markdown frontmatter parsing (Obsidian)
+# notion-client>=2.0.0  # Notion API client (Notion)
 
 # Development Dependencies
 # For development setup: pip install -e .[dev]

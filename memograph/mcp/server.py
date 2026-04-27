@@ -5,6 +5,7 @@ MemoGraph functionality as tools that can be used by any MCP-compatible
 AI client (Claude Desktop, Cline, etc.).
 """
 
+import asyncio
 import logging
 import os
 from pathlib import Path
@@ -13,6 +14,7 @@ from typing import Any
 from ..core.enums import MemoryType
 from ..core.kernel import MemoryKernel
 from .autonomous_hooks import AutonomousHooks
+from .conversation_monitor import ConversationMonitor
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -36,28 +38,75 @@ class MemoGraphMCPServer:
         llm_provider: str | None = None,
         llm_model: str | None = None,
     ):
-        """Initialize MCP server with MemoGraph kernel.
+        """Initialize MCP server with validated vault path."""
+        # Validate and resolve path
+        try:
+            self.vault_path = Path(vault_path).expanduser().resolve()
+        except (RuntimeError, OSError) as e:
+            raise ValueError(f"Invalid vault path '{vault_path}': {e}") from e
 
-        Args:
-            vault_path: Path to the MemoGraph vault
-            llm_provider: LLM provider to use (ollama or claude). Optional - if not
-                         provided, query_with_context will return context for the
-                         client's LLM to use instead of generating answers.
-            llm_model: Specific model name (optional)
-        """
-        self.vault_path = Path(vault_path).expanduser()
-        self.kernel = MemoryKernel(str(self.vault_path))
+        # Verify not a file
+        if self.vault_path.exists() and not self.vault_path.is_dir():
+            raise ValueError(
+                f"Vault path is a file, not a directory: {self.vault_path}"
+            )
+
+        # Create if needed
+        if not self.vault_path.exists():
+            try:
+                self.vault_path.mkdir(parents=True, exist_ok=True)
+                logger.info(f"Created vault directory: {self.vault_path}")
+            except PermissionError as e:
+                raise PermissionError(
+                    f"Cannot create vault at {self.vault_path}: {e}"
+                ) from e
+
+        # Verify write permissions
+        if not os.access(self.vault_path, os.W_OK):
+            raise PermissionError(f"No write permission for vault: {self.vault_path}")
+
+        logger.info(f"✓ Vault validated: {self.vault_path}")
+
+        # Initialize kernel
+        try:
+            self.kernel = MemoryKernel(str(self.vault_path))
+        except Exception as e:
+            raise RuntimeError(f"Kernel init failed: {e}") from e
+
         self.llm_provider = llm_provider
         self.llm_model = llm_model
 
-        # Auto-ingest vault on startup so tools like list_memories work immediately
+        # Track ingest state
+        self._ingest_failed = False
+        self._ingest_error: Exception | None = None
+
+        # Auto-ingest with comprehensive tracking
         try:
-            self.kernel.ingest()
+            stats = self.kernel.ingest()
             logger.info(
-                f"Ingested vault: {len(self.kernel.graph._nodes)} memories loaded"
+                f"✓ Ingested: {stats['indexed']} indexed, {stats['skipped']} skipped"
             )
+
+            # Detect suspicious scenarios
+            if stats["indexed"] == 0 and stats["skipped"] == 0:
+                md_files = list(self.vault_path.rglob("*.md"))
+                if md_files:
+                    logger.error(
+                        f"❌ CRITICAL: {len(md_files)} .md files found "
+                        f"but none indexed - parsing errors!"
+                    )
+                    self._ingest_failed = True
+                    self._ingest_error = RuntimeError(
+                        f"All {len(md_files)} files failed to parse"
+                    )
+                else:
+                    logger.warning("⚠️  Empty vault - no memories found")
+
         except Exception as e:
-            logger.warning(f"Initial vault ingest failed: {e}")
+            logger.error(f"❌ CRITICAL: Ingest failed: {e}", exc_info=True)
+            logger.error("Server degraded - operations will fail")
+            self._ingest_failed = True
+            self._ingest_error = e
 
         # Initialize autonomous hooks (can be enabled/disabled via configuration)
         self.autonomous_hooks = AutonomousHooks(self)
@@ -71,6 +120,38 @@ class MemoGraphMCPServer:
             self.autonomous_hooks.auto_save_responses = True
             logger.info("Autonomous mode enabled via MEMOGRAPH_AUTONOMOUS_MODE")
 
+        # Initialize conversation monitor if enabled (Layer 2 auto-save)
+        monitor_enabled = (
+            os.environ.get("MEMOGRAPH_AUTO_SAVE_MONITOR", "false").lower() == "true"
+        )
+        if monitor_enabled:
+            self.conversation_monitor = ConversationMonitor(
+                kernel=self.kernel,
+                config={
+                    "enabled": True,
+                    "idle_threshold_seconds": int(
+                        os.environ.get("MEMOGRAPH_IDLE_THRESHOLD", "30")
+                    ),
+                    "min_question_length": int(
+                        os.environ.get("MEMOGRAPH_MIN_QUESTION_LENGTH", "10")
+                    ),
+                    "max_buffer_size": int(
+                        os.environ.get("MEMOGRAPH_MAX_BUFFER_SIZE", "50")
+                    ),
+                    "check_interval_seconds": int(
+                        os.environ.get("MEMOGRAPH_CHECK_INTERVAL", "5")
+                    ),
+                },
+            )
+            # Store task reference to prevent garbage collection
+            # Note: Task will be started by start_monitor() after server is fully initialized
+            self._monitor_task = None
+            logger.info("✅ Conversation monitor initialized (Layer 2 auto-save)")
+        else:
+            self.conversation_monitor = None
+            self._monitor_task = None
+            logger.info("ℹ️  Conversation monitor disabled (using Layer 1 only)")
+
         if llm_provider:
             logger.info(
                 f"Initialized MemoGraph MCP server with vault: {self.vault_path}, provider: {llm_provider}"
@@ -79,6 +160,37 @@ class MemoGraphMCPServer:
             logger.info(
                 f"Initialized MemoGraph MCP server with vault: {self.vault_path} (no LLM provider - client will handle answers)"
             )
+
+    def _check_server_health(self) -> None:
+        """Raise error if server is in degraded state."""
+        if self._ingest_failed:
+            raise RuntimeError(
+                f"Server degraded due to ingest failure: {self._ingest_error}\n"
+                f"Fix vault issues and restart server"
+            )
+
+    def _atomic_write(self, file_path: Path, content: str) -> None:
+        """Write file atomically using temp file + rename to prevent corruption.
+
+        Args:
+            file_path: Target file path to write to
+            content: Content to write
+
+        Raises:
+            OSError: If write or rename fails
+        """
+        temp_path = file_path.with_suffix(".tmp")
+        try:
+            temp_path.write_text(content, encoding="utf-8")
+            temp_path.replace(file_path)  # Atomic on POSIX and Windows
+        except Exception:
+            # Clean up temp file on failure (best effort)
+            if temp_path.exists():
+                try:
+                    temp_path.unlink()
+                except Exception:
+                    pass  # Best effort cleanup
+            raise
 
     def _add_vault_context(self, response: dict[str, Any]) -> dict[str, Any]:
         """Add vault context information to any response.
@@ -96,6 +208,29 @@ class MemoGraphMCPServer:
             "path": str(self.vault_path),
             "name": self.vault_path.name,
         }
+        return response
+
+    def _add_save_notification(
+        self, response: dict[str, Any], layer: str = "unknown"
+    ) -> dict[str, Any]:
+        """Add auto-save notification to response.
+
+        Args:
+            response: Original response
+            layer: Which layer saved ('layer1', 'layer2', 'unknown')
+
+        Returns:
+            Response with notification added
+        """
+        notifications = {
+            "layer1": "💾 Saved by: You (Layer 1 explicit save)",
+            "layer2": "🤖 Saved by: Monitor (Layer 2 automatic backup)",
+            "unknown": "💾 Conversation saved",
+        }
+
+        response["auto_save_notification"] = notifications.get(
+            layer, notifications["unknown"]
+        )
         return response
 
     def get_server_info(self) -> dict[str, Any]:
@@ -181,6 +316,7 @@ class MemoGraphMCPServer:
             Dictionary with search results
         """
         try:
+            self._check_server_health()
             # Retrieve nodes
             results = self.kernel.retrieve_nodes(
                 query=query,
@@ -215,13 +351,23 @@ class MemoGraphMCPServer:
                 for node in results
             ]
 
-            return self._add_vault_context(
+            result = self._add_vault_context(
                 {
                     "success": True,
                     "count": len(formatted_results),
                     "results": formatted_results,
                 }
             )
+
+            # Record for conversation monitor
+            if self.conversation_monitor:
+                self.conversation_monitor.record_tool_call(
+                    tool_name="search_vault",
+                    args={"query": query, "tags": tags, "top_k": top_k},
+                    result=result,
+                )
+
+            return result
 
         except Exception as e:
             logger.error(f"Error searching vault: {e}")
@@ -254,6 +400,7 @@ class MemoGraphMCPServer:
             Dictionary with creation result
         """
         try:
+            self._check_server_health()
             # Create memory
             path = self.kernel.remember(
                 title=title,
@@ -264,13 +411,29 @@ class MemoGraphMCPServer:
             )
 
             # Find suggested links based on shared tags and keyword overlap
+            # Optimized: limit candidate pool instead of checking all nodes
             suggested_links = []
             new_tags = set(tags or [])
             title_words = set(title.lower().split())
             content_words = set(w.lower() for w in content.split() if len(w) > 3)
             check_words = title_words | content_words
 
-            for node in self.kernel.graph.all_nodes():
+            # Limit candidate pool - only check memories with shared tags
+            candidates = []
+            if new_tags:
+                candidates = self.kernel.graph.get_by_tags(
+                    list(new_tags), match_all=False
+                )
+            else:
+                # If no tags, just check recent memories
+                all_nodes = self.kernel.graph.all_nodes()
+                from datetime import datetime
+
+                candidates = sorted(
+                    all_nodes, key=lambda n: n.created_at or datetime.min, reverse=True
+                )[:100]  # Limit to 100 most recent
+
+            for node in candidates:
                 if node.source_path and Path(node.source_path) == Path(path):
                     continue
                 reasons = []
@@ -289,11 +452,12 @@ class MemoGraphMCPServer:
                             "reason": "; ".join(reasons),
                         }
                     )
+                    if len(suggested_links) >= 5:  # Stop at 5 suggestions
+                        break
 
-            # Limit suggestions
-            suggested_links = suggested_links[:5]
+            # Already limited to 5 in loop above
 
-            return self._add_vault_context(
+            result = self._add_vault_context(
                 {
                     "success": True,
                     "message": f"Created memory: {title}",
@@ -302,6 +466,16 @@ class MemoGraphMCPServer:
                     "suggested_links": suggested_links,
                 }
             )
+
+            # Record for conversation monitor
+            if self.conversation_monitor:
+                self.conversation_monitor.record_tool_call(
+                    tool_name="create_memory",
+                    args={"title": title, "tags": tags, "memory_type": memory_type},
+                    result=result,
+                )
+
+            return result
 
         except Exception as e:
             logger.error(f"Error creating memory: {e}")
@@ -336,6 +510,7 @@ class MemoGraphMCPServer:
             Dictionary with answer (if LLM available) or context (for client to use)
         """
         try:
+            self._check_server_health()
             from ..core.assistant import (
                 build_answer_prompt,
                 retrieve_cited_context,
@@ -376,7 +551,7 @@ class MemoGraphMCPServer:
                     stream=False,  # No streaming for MCP
                 )
 
-                return self._add_vault_context(
+                result = self._add_vault_context(
                     {
                         "success": True,
                         "answer": answer,
@@ -386,9 +561,19 @@ class MemoGraphMCPServer:
                     }
                 )
 
+                # Record for conversation monitor
+                if self.conversation_monitor:
+                    self.conversation_monitor.record_tool_call(
+                        tool_name="query_with_context",
+                        args={"question": question, "tags": tags, "top_k": top_k},
+                        result=result,
+                    )
+
+                return result
+
             # Otherwise, return context for client's LLM to use
             else:
-                return self._add_vault_context(
+                result = self._add_vault_context(
                     {
                         "success": True,
                         "context": context,
@@ -399,6 +584,16 @@ class MemoGraphMCPServer:
                     }
                 )
 
+                # Record for conversation monitor (even in context_only mode)
+                if self.conversation_monitor:
+                    self.conversation_monitor.record_tool_call(
+                        tool_name="query_with_context",
+                        args={"question": question, "tags": tags, "top_k": top_k},
+                        result=result,
+                    )
+
+                return result
+
         except Exception as e:
             logger.error(f"Error querying with context: {e}")
             return self._add_vault_context(
@@ -408,40 +603,31 @@ class MemoGraphMCPServer:
                 }
             )
 
-    async def get_vault_stats(self) -> dict[str, Any]:
+    async def get_vault_stats(self, detailed: bool = False) -> dict[str, Any]:
         """Get statistics about the vault.
+
+        Args:
+            detailed: If True, include detailed breakdowns
 
         Returns:
             Dictionary with vault statistics
         """
         try:
-            # Ingest to get stats
-            stats = self.kernel.ingest(force=False)
+            self._check_server_health()
+            # Ingest to get indexed/skipped stats
+            ingest_stats = self.kernel.ingest(force=False)
 
-            # Get additional info
-            all_nodes = self.kernel.graph.all_nodes()
+            # Get comprehensive statistics using new method
+            vault_stats = self.kernel.get_vault_statistics(detailed=detailed)
 
-            # Count by type
-            type_counts: dict[str, int] = {}
-            for node in all_nodes:
-                type_name = node.memory_type.value
-                type_counts[type_name] = type_counts.get(type_name, 0) + 1
-
-            # Get all tags
-            all_tags = set()
-            for node in all_nodes:
-                all_tags.update(node.tags)
-
+            # Combine both
             return self._add_vault_context(
                 {
                     "success": True,
                     "vault_path": str(self.vault_path),
-                    "total_memories": stats["total"],
-                    "indexed": stats["indexed"],
-                    "skipped": stats["skipped"],
-                    "by_type": type_counts,
-                    "total_tags": len(all_tags),
-                    "tags": sorted(all_tags),
+                    "indexed": ingest_stats["indexed"],
+                    "skipped": ingest_stats["skipped"],
+                    **vault_stats,
                 }
             )
 
@@ -473,6 +659,7 @@ class MemoGraphMCPServer:
             Dictionary with list of memories
         """
         try:
+            self._check_server_health()
             # Get all nodes
             nodes = self.kernel.graph.all_nodes()
 
@@ -544,6 +731,7 @@ class MemoGraphMCPServer:
             Dictionary with memory details
         """
         try:
+            self._check_server_health()
             node = self.kernel.graph.get(memory_id)
 
             if not node:
@@ -604,6 +792,7 @@ class MemoGraphMCPServer:
             Dictionary with import result
         """
         try:
+            self._check_server_health()
             # Read file content
             import_path = Path(file_path).expanduser()
             if not import_path.exists():
@@ -658,16 +847,10 @@ class MemoGraphMCPServer:
             Dictionary with deletion result
         """
         try:
-            # Find the memory file
-            memory_path: Path | None = None
-            for md_file in self.vault_path.rglob("*.md"):
-                if md_file.stem == memory_id or md_file.stem.startswith(
-                    f"{memory_id}-"
-                ):
-                    memory_path = md_file
-                    break
-
-            if not memory_path or not memory_path.exists():
+            self._check_server_health()
+            # Find the memory file using graph lookup (much faster than rglob)
+            node = self.kernel.graph.get(memory_id)
+            if not node or not node.source_path:
                 return self._add_vault_context(
                     {
                         "success": False,
@@ -675,8 +858,16 @@ class MemoGraphMCPServer:
                     }
                 )
 
+            memory_path = Path(node.source_path)
+            if not memory_path.exists():
+                return self._add_vault_context(
+                    {
+                        "success": False,
+                        "error": f"Memory file not found: {memory_path}",
+                    }
+                )
+
             # Get memory info before deletion
-            node = self.kernel.graph.get(memory_id)
             title = node.title if node else memory_id
 
             # Delete the file
@@ -727,24 +918,25 @@ class MemoGraphMCPServer:
             Dictionary with update result
         """
         try:
+            self._check_server_health()
             import re
             from datetime import datetime, timezone
 
             import yaml
 
-            # Find the memory file
-            memory_path = None
-            for md_file in self.vault_path.rglob("*.md"):
-                if md_file.stem == memory_id or md_file.stem.startswith(
-                    f"{memory_id}-"
-                ):
-                    memory_path = md_file
-                    break
-
-            if not memory_path or not memory_path.exists():
+            # Find the memory file using graph lookup (much faster than rglob)
+            node = self.kernel.graph.get(memory_id)
+            if not node or not node.source_path:
                 return {
                     "success": False,
                     "error": f"Memory not found: {memory_id}",
+                }
+
+            memory_path = Path(node.source_path)
+            if not memory_path.exists():
+                return {
+                    "success": False,
+                    "error": f"Memory file not found: {memory_path}",
                 }
 
             # Read existing content
@@ -793,7 +985,7 @@ class MemoGraphMCPServer:
                 + yaml.safe_dump(frontmatter, sort_keys=False).strip()
                 + "\n---\n\n"
             )
-            memory_path.write_text(new_frontmatter + body + "\n", encoding="utf-8")
+            self._atomic_write(memory_path, new_frontmatter + body + "\n")
 
             logger.info(f"Updated memory: {memory_id}")
 
@@ -807,6 +999,264 @@ class MemoGraphMCPServer:
 
         except Exception as e:
             logger.error(f"Error updating memory: {e}")
+            return self._add_vault_context(
+                {
+                    "success": False,
+                    "error": str(e),
+                }
+            )
+
+    async def suggest_tags(
+        self,
+        content: str,
+        title: str = "",
+        existing_tags: list[str] | None = None,
+        min_confidence: float = 0.3,
+        max_suggestions: int = 5,
+    ) -> dict[str, Any]:
+        """Suggest tags for a note using AI analysis.
+
+        Args:
+            content: Note content to analyze
+            title: Note title (optional)
+            existing_tags: Tags already assigned (optional)
+            min_confidence: Minimum confidence score (0.0-1.0)
+            max_suggestions: Maximum number of suggestions
+
+        Returns:
+            Dictionary with tag suggestions
+        """
+        try:
+            self._check_server_health()
+            from ..ai.auto_tagger import AutoTagger
+
+            tagger = AutoTagger(
+                self.kernel,
+                min_confidence=min_confidence,
+                max_suggestions=max_suggestions,
+            )
+
+            suggestions = await tagger.suggest_tags(
+                content=content,
+                title=title,
+                existing_tags=existing_tags or [],
+            )
+
+            formatted_suggestions = [
+                {
+                    "tag": s.tag,
+                    "confidence": round(s.confidence, 3),
+                    "reason": s.reason,
+                    "source": s.source,
+                }
+                for s in suggestions
+            ]
+
+            return self._add_vault_context(
+                {
+                    "success": True,
+                    "count": len(formatted_suggestions),
+                    "suggestions": formatted_suggestions,
+                }
+            )
+
+        except Exception as e:
+            logger.error(f"Error suggesting tags: {e}")
+            return self._add_vault_context(
+                {
+                    "success": False,
+                    "error": str(e),
+                }
+            )
+
+    async def suggest_links(
+        self,
+        content: str,
+        title: str = "",
+        note_id: str | None = None,
+        existing_links: list[str] | None = None,
+        min_confidence: float = 0.4,
+        max_suggestions: int = 10,
+    ) -> dict[str, Any]:
+        """Suggest wikilinks for a note using semantic similarity and graph analysis.
+
+        Args:
+            content: Note content to analyze
+            title: Note title (optional)
+            note_id: Note ID for graph-based suggestions (optional)
+            existing_links: Links already in the note (optional)
+            min_confidence: Minimum confidence score (0.0-1.0)
+            max_suggestions: Maximum number of suggestions
+
+        Returns:
+            Dictionary with link suggestions
+        """
+        try:
+            self._check_server_health()
+            from ..ai.link_suggester import LinkSuggester
+
+            suggester = LinkSuggester(
+                self.kernel,
+                min_confidence=min_confidence,
+                max_suggestions=max_suggestions,
+            )
+
+            suggestions = await suggester.suggest_links(
+                content=content,
+                title=title,
+                note_id=note_id,
+                existing_links=existing_links or [],
+            )
+
+            formatted_suggestions = [
+                {
+                    "target_title": s.target_title,
+                    "target_id": s.target_id,
+                    "confidence": round(s.confidence, 3),
+                    "reason": s.reason,
+                    "source": s.source,
+                    "bidirectional": s.bidirectional,
+                }
+                for s in suggestions
+            ]
+
+            return self._add_vault_context(
+                {
+                    "success": True,
+                    "count": len(formatted_suggestions),
+                    "suggestions": formatted_suggestions,
+                }
+            )
+
+        except Exception as e:
+            logger.error(f"Error suggesting links: {e}")
+            return self._add_vault_context(
+                {
+                    "success": False,
+                    "error": str(e),
+                }
+            )
+
+    async def detect_knowledge_gaps(
+        self,
+        min_severity: float = 0.3,
+        max_gaps: int = 20,
+        gap_types: list[str] | None = None,
+    ) -> dict[str, Any]:
+        """Detect knowledge gaps in the vault.
+
+        Args:
+            min_severity: Minimum severity threshold (0.0-1.0)
+            max_gaps: Maximum number of gaps to return
+            gap_types: Specific gap types to detect (optional):
+                      ['missing_topic', 'weak_coverage', 'isolated_note', 'missing_link']
+
+        Returns:
+            Dictionary with detected gaps
+        """
+        try:
+            self._check_server_health()
+            from ..ai.gap_detector import GapDetector
+
+            detector = GapDetector(
+                self.kernel,
+                min_severity=min_severity,
+                max_gaps=max_gaps,
+            )
+
+            gaps = await detector.detect_gaps()
+
+            # Filter by gap types if specified
+            if gap_types:
+                gaps = [g for g in gaps if g.gap_type in gap_types]
+
+            formatted_gaps = [
+                {
+                    "type": g.gap_type,
+                    "title": g.title,
+                    "description": g.description,
+                    "severity": round(g.severity, 2),
+                    "suggestions": g.suggestions,
+                    "related_notes": g.related_notes[:5],  # Limit to 5
+                }
+                for g in gaps
+            ]
+
+            return self._add_vault_context(
+                {
+                    "success": True,
+                    "count": len(formatted_gaps),
+                    "gaps": formatted_gaps,
+                    "summary": {
+                        "total_gaps": len(formatted_gaps),
+                        "by_type": {
+                            gap_type: len([g for g in gaps if g.gap_type == gap_type])
+                            for gap_type in [
+                                "missing_topic",
+                                "weak_coverage",
+                                "isolated_note",
+                                "missing_link",
+                            ]
+                        },
+                        "avg_severity": sum(g.severity for g in gaps) / len(gaps)
+                        if gaps
+                        else 0.0,
+                    },
+                }
+            )
+
+        except Exception as e:
+            logger.error(f"Error detecting knowledge gaps: {e}")
+            return self._add_vault_context(
+                {
+                    "success": False,
+                    "error": str(e),
+                }
+            )
+
+    async def analyze_knowledge_base(
+        self,
+        include_gaps: bool = True,
+        include_clusters: bool = True,
+        include_paths: bool = True,
+    ) -> dict[str, Any]:
+        """Perform comprehensive knowledge base analysis.
+
+        Args:
+            include_gaps: Include gap detection
+            include_clusters: Include topic clustering
+            include_paths: Include learning path suggestions
+
+        Returns:
+            Dictionary with comprehensive analysis
+        """
+        try:
+            self._check_server_health()
+            from ..ai.gap_detector import GapDetector
+
+            detector = GapDetector(self.kernel)
+            analysis = await detector.analyze_knowledge_base()
+
+            # Filter based on requested components
+            if not include_gaps:
+                analysis["gaps"] = []
+                analysis["summary"]["total_gaps"] = 0
+            if not include_clusters:
+                analysis["clusters"] = []
+                analysis["summary"]["total_clusters"] = 0
+            if not include_paths:
+                analysis["learning_paths"] = []
+                analysis["summary"]["total_paths"] = 0
+
+            return self._add_vault_context(
+                {
+                    "success": True,
+                    "analysis": analysis,
+                }
+            )
+
+        except Exception as e:
+            logger.error(f"Error analyzing knowledge base: {e}")
             return self._add_vault_context(
                 {
                     "success": False,
@@ -855,6 +1305,12 @@ class MemoGraphMCPServer:
                         "find_path",
                     ],
                     "bulk": ["bulk_create"],
+                    "ai": [
+                        "suggest_tags",
+                        "suggest_links",
+                        "detect_knowledge_gaps",
+                        "analyze_knowledge_base",
+                    ],
                 },
             }
         except Exception as e:
@@ -883,6 +1339,7 @@ class MemoGraphMCPServer:
             Dictionary with result
         """
         try:
+            self._check_server_health()
             import re
 
             source_node = self.kernel.graph.get(source_id)
@@ -926,10 +1383,21 @@ class MemoGraphMCPServer:
             else:
                 content = content.rstrip() + f"\n\n{link_text}\n"
 
-            source_path.write_text(content, encoding="utf-8")
+            self._atomic_write(source_path, content)
 
-            # Re-ingest to update graph
-            self.kernel.ingest(force=True)
+            # Update graph incrementally instead of full rebuild (much faster)
+            source_node = self.kernel.graph.get(source_id)
+            if source_node:
+                # Update in-memory graph
+                if target_id not in source_node.links:
+                    source_node.links.append(target_id)
+
+                # Rebuild backlinks (fast operation)
+                self.kernel.graph.build_backlinks()
+
+                logger.debug(
+                    f"Updated graph incrementally for link: {source_id} -> {target_id}"
+                )
 
             return self._add_vault_context(
                 {
@@ -961,6 +1429,7 @@ class MemoGraphMCPServer:
             Dictionary with connected nodes and their relationships
         """
         try:
+            self._check_server_health()
             node = self.kernel.graph.get(memory_id)
             if not node:
                 return self._add_vault_context(
@@ -1022,6 +1491,7 @@ class MemoGraphMCPServer:
             Dictionary with the path or message if no path exists
         """
         try:
+            self._check_server_health()
             path = self.kernel.graph.find_path(from_id, to_id)
 
             if path is None:
@@ -1069,6 +1539,7 @@ class MemoGraphMCPServer:
             Dictionary with creation results
         """
         try:
+            self._check_server_health()
             results, errors = self.kernel.remember_many(
                 memories=memories, continue_on_error=True
             )
@@ -1090,6 +1561,423 @@ class MemoGraphMCPServer:
 
         except Exception as e:
             logger.error(f"Error in bulk create: {e}")
+            return self._add_vault_context({"success": False, "error": str(e)})
+
+    async def batch_update(
+        self,
+        updates: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        """Update multiple memories in one operation.
+
+        Args:
+            updates: List of update dicts with 'memory_id' and fields to update
+
+        Returns:
+            Dictionary with update results
+        """
+        try:
+            self._check_server_health()
+
+            # Convert to format expected by kernel.update_many
+            update_tuples = [
+                (upd["memory_id"], {k: v for k, v in upd.items() if k != "memory_id"})
+                for upd in updates
+            ]
+
+            updated_ids, errors = self.kernel.update_many(
+                update_tuples, continue_on_error=True
+            )
+
+            return self._add_vault_context(
+                {
+                    "success": True,
+                    "updated": len(updated_ids),
+                    "failed": len(errors),
+                    "updated_ids": updated_ids,
+                    "errors": [
+                        {"memory_id": str(mid), "error": str(err)}
+                        for mid, err in errors
+                    ]
+                    if errors
+                    else [],
+                }
+            )
+
+        except Exception as e:
+            logger.error(f"Error in batch update: {e}")
+            return self._add_vault_context({"success": False, "error": str(e)})
+
+    async def batch_delete(
+        self,
+        memory_ids: list[str],
+    ) -> dict[str, Any]:
+        """Delete multiple memories in one operation.
+
+        Args:
+            memory_ids: List of memory IDs to delete
+
+        Returns:
+            Dictionary with deletion results
+        """
+        try:
+            self._check_server_health()
+
+            deleted_ids = []
+            errors = []
+
+            for memory_id in memory_ids:
+                try:
+                    node = self.kernel.graph.get(memory_id)
+                    if not node or not node.source_path:
+                        errors.append((memory_id, "Memory not found"))
+                        continue
+
+                    memory_path = Path(node.source_path)
+                    if not memory_path.exists():
+                        errors.append((memory_id, "File not found"))
+                        continue
+
+                    memory_path.unlink()
+                    self.kernel.graph.remove_node(memory_id)
+                    deleted_ids.append(memory_id)
+
+                except Exception as e:
+                    errors.append((memory_id, str(e)))
+
+            # Re-ingest if any successful deletions
+            if deleted_ids:
+                self.kernel.ingest(force=False)
+
+            return self._add_vault_context(
+                {
+                    "success": True,
+                    "deleted": len(deleted_ids),
+                    "failed": len(errors),
+                    "deleted_ids": deleted_ids,
+                    "errors": [
+                        {"memory_id": str(mid), "error": str(err)}
+                        for mid, err in errors
+                    ]
+                    if errors
+                    else [],
+                }
+            )
+
+        except Exception as e:
+            logger.error(f"Error in batch delete: {e}")
+            return self._add_vault_context({"success": False, "error": str(e)})
+
+    async def export_vault_tool(
+        self,
+        output_path: str,
+        format: str = "json",
+        filter_tags: list[str] | None = None,
+        compress: bool = False,
+    ) -> dict[str, Any]:
+        """Export vault memories to specified format.
+
+        Args:
+            output_path: Path for the export file
+            format: Export format - 'json', 'csv', or 'zip'
+            filter_tags: Optional list of tags to filter memories
+            compress: Whether to compress the output
+
+        Returns:
+            Dictionary with export result
+        """
+        try:
+            self._check_server_health()
+
+            path = self.kernel.export_vault(
+                output_path=output_path,
+                format=format,  # type: ignore
+                filter_tags=filter_tags,
+                compress=compress,
+            )
+
+            return self._add_vault_context(
+                {
+                    "success": True,
+                    "message": f"Exported vault to {format} format",
+                    "path": str(path),
+                    "format": format,
+                }
+            )
+
+        except Exception as e:
+            logger.error(f"Error exporting vault: {e}")
+            return self._add_vault_context({"success": False, "error": str(e)})
+
+    async def import_backup_tool(
+        self,
+        backup_path: str,
+        merge: bool = True,
+        skip_duplicates: bool = False,
+    ) -> dict[str, Any]:
+        """Import memories from a backup file.
+
+        Args:
+            backup_path: Path to backup file
+            merge: If True, merge with existing. If False, clear vault first.
+            skip_duplicates: If True, skip memories that already exist
+
+        Returns:
+            Dictionary with import result
+        """
+        try:
+            self._check_server_health()
+
+            stats = self.kernel.import_backup(
+                backup_path=backup_path,
+                merge=merge,
+                skip_duplicates=skip_duplicates,
+            )
+
+            return self._add_vault_context(
+                {
+                    "success": True,
+                    "message": f"Imported {stats['imported']} memories",
+                    "imported": stats["imported"],
+                    "skipped": stats["skipped"],
+                    "failed": stats["failed"],
+                }
+            )
+
+        except Exception as e:
+            logger.error(f"Error importing backup: {e}")
+            return self._add_vault_context({"success": False, "error": str(e)})
+
+    async def create_backup_tool(
+        self,
+        destination: str,
+        compress: bool = True,
+    ) -> dict[str, Any]:
+        """Create a backup of the vault.
+
+        Args:
+            destination: Destination directory or file path
+            compress: Whether to create compressed ZIP backup
+
+        Returns:
+            Dictionary with backup result
+        """
+        try:
+            self._check_server_health()
+
+            path = self.kernel.create_backup(
+                destination=destination,
+                compress=compress,
+            )
+
+            return self._add_vault_context(
+                {
+                    "success": True,
+                    "message": f"Backup created at {path}",
+                    "path": str(path),
+                    "compressed": compress,
+                }
+            )
+
+        except Exception as e:
+            logger.error(f"Error creating backup: {e}")
+            return self._add_vault_context({"success": False, "error": str(e)})
+
+    # ==================== Config Management Methods ====================
+
+    async def get_config_value(self, key: str) -> dict[str, Any]:
+        """Get a configuration value.
+
+        Args:
+            key: Configuration key
+
+        Returns:
+            Dictionary with configuration value
+        """
+        try:
+            from ..core.config import MemographConfig
+
+            config = MemographConfig()
+            value = config.get(key)
+
+            return self._add_vault_context(
+                {
+                    "success": True,
+                    "key": key,
+                    "value": value,
+                }
+            )
+
+        except Exception as e:
+            logger.error(f"Error getting config: {e}")
+            return self._add_vault_context({"success": False, "error": str(e)})
+
+    async def set_config_value(self, key: str, value: Any) -> dict[str, Any]:
+        """Set a configuration value.
+
+        Args:
+            key: Configuration key
+            value: Value to set
+
+        Returns:
+            Dictionary with result
+        """
+        try:
+            from ..core.config import MemographConfig
+
+            config = MemographConfig()
+            config.set(key, value)
+
+            return self._add_vault_context(
+                {
+                    "success": True,
+                    "message": f"Set {key} = {value}",
+                    "key": key,
+                    "value": value,
+                }
+            )
+
+        except Exception as e:
+            logger.error(f"Error setting config: {e}")
+            return self._add_vault_context({"success": False, "error": str(e)})
+
+    async def list_config_all(self) -> dict[str, Any]:
+        """List all configuration settings.
+
+        Returns:
+            Dictionary with all configuration
+        """
+        try:
+            from ..core.config import MemographConfig
+
+            config = MemographConfig()
+            all_config = config.list_all()
+
+            return self._add_vault_context(
+                {
+                    "success": True,
+                    "config": all_config,
+                    "active_profile": config.get_active_profile(),
+                }
+            )
+
+        except Exception as e:
+            logger.error(f"Error listing config: {e}")
+            return self._add_vault_context({"success": False, "error": str(e)})
+
+    async def create_profile_config(
+        self, name: str, settings: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Create a configuration profile.
+
+        Args:
+            name: Profile name
+            settings: Profile settings
+
+        Returns:
+            Dictionary with result
+        """
+        try:
+            from ..core.config import MemographConfig
+
+            config = MemographConfig()
+            config.create_profile(name, settings)
+
+            return self._add_vault_context(
+                {
+                    "success": True,
+                    "message": f"Created profile: {name}",
+                    "profile": name,
+                }
+            )
+
+        except Exception as e:
+            logger.error(f"Error creating profile: {e}")
+            return self._add_vault_context({"success": False, "error": str(e)})
+
+    async def use_profile_config(self, name: str) -> dict[str, Any]:
+        """Switch to a configuration profile.
+
+        Args:
+            name: Profile name
+
+        Returns:
+            Dictionary with result
+        """
+        try:
+            from ..core.config import MemographConfig
+
+            config = MemographConfig()
+            config.use_profile(name)
+
+            return self._add_vault_context(
+                {
+                    "success": True,
+                    "message": f"Switched to profile: {name}",
+                    "active_profile": name,
+                }
+            )
+
+        except Exception as e:
+            logger.error(f"Error switching profile: {e}")
+            return self._add_vault_context({"success": False, "error": str(e)})
+
+    async def list_profiles_config(self) -> dict[str, Any]:
+        """List all configuration profiles.
+
+        Returns:
+            Dictionary with profiles list
+        """
+        try:
+            from ..core.config import MemographConfig
+
+            config = MemographConfig()
+            profiles = config.list_profiles()
+            active = config.get_active_profile()
+
+            return self._add_vault_context(
+                {
+                    "success": True,
+                    "profiles": profiles,
+                    "active_profile": active,
+                }
+            )
+
+        except Exception as e:
+            logger.error(f"Error listing profiles: {e}")
+            return self._add_vault_context({"success": False, "error": str(e)})
+
+    async def delete_profile_config(self, name: str) -> dict[str, Any]:
+        """Delete a configuration profile.
+
+        Args:
+            name: Profile name
+
+        Returns:
+            Dictionary with result
+        """
+        try:
+            from ..core.config import MemographConfig
+
+            config = MemographConfig()
+            deleted = config.delete_profile(name)
+
+            if deleted:
+                return self._add_vault_context(
+                    {
+                        "success": True,
+                        "message": f"Deleted profile: {name}",
+                    }
+                )
+            else:
+                return self._add_vault_context(
+                    {
+                        "success": False,
+                        "error": f"Profile not found: {name}",
+                    }
+                )
+
+        except Exception as e:
+            logger.error(f"Error deleting profile: {e}")
             return self._add_vault_context({"success": False, "error": str(e)})
 
     # ==================== Autonomous Hooks Methods ====================
@@ -1183,6 +2071,118 @@ class MemoGraphMCPServer:
             Dictionary with current settings and recommendations
         """
         return self.autonomous_hooks.get_configuration()
+
+    async def verify_last_save(
+        self,
+        time_window_seconds: int = 60,
+        conversation_only: bool = True,
+    ) -> dict[str, Any]:
+        """Verify if a recent conversation was saved.
+
+        Args:
+            time_window_seconds: How far back to check in seconds
+            conversation_only: Only check conversation memories
+
+        Returns:
+            Dictionary with verification result
+        """
+        return await self.autonomous_hooks.verify_last_save(
+            time_window_seconds=time_window_seconds,
+            conversation_only=conversation_only,
+        )
+
+    async def get_save_stats(self, period: str = "session") -> dict[str, Any]:
+        """Get statistics about save success rate.
+
+        Args:
+            period: Time period to analyze ('session', 'hour', 'day', 'week', 'all')
+
+        Returns:
+            Dictionary with save statistics
+        """
+        return await self.autonomous_hooks.get_save_stats(period=period)
+
+    async def get_auto_save_analytics(
+        self, period: str = "day", include_recommendations: bool = True
+    ) -> dict[str, Any]:
+        """Get comprehensive auto-save analytics.
+
+        Args:
+            period: 'hour', 'day', 'week', or 'all'
+            include_recommendations: Whether to include recommendations
+
+        Returns:
+            Analytics dictionary
+        """
+        return await self.autonomous_hooks.get_auto_save_analytics(
+            period, include_recommendations
+        )
+
+    async def get_monitor_status(self) -> dict[str, Any]:
+        """Get status of the conversation monitor (Layer 2).
+
+        Returns:
+            Dictionary with monitor status and diagnostics
+        """
+        try:
+            if not self.conversation_monitor:
+                return {
+                    "success": True,
+                    "monitor_enabled": False,
+                    "message": "Conversation monitor (Layer 2) is not enabled. Set MEMOGRAPH_AUTO_SAVE_MONITOR=true to enable.",
+                    "recommendation": "Layer 2 provides backup auto-save for missed conversations. Enable it for better coverage.",
+                }
+
+            stats = self.conversation_monitor.get_stats()
+
+            # Check if monitor is actually detecting activity
+            has_activity = stats.get("last_activity") is not None
+            is_detecting = stats.get("total_detected", 0) > 0
+
+            status = "active" if has_activity and is_detecting else "idle"
+            if not has_activity:
+                status = "inactive"
+
+            return {
+                "success": True,
+                "monitor_enabled": True,
+                "status": status,
+                "statistics": stats,
+                "diagnostics": {
+                    "background_loop_running": True,  # If we got here, it's running
+                    "detecting_conversations": is_detecting,
+                    "has_recent_activity": has_activity,
+                },
+                "message": f"Monitor is {status}. Detected {stats.get('total_detected', 0)} conversations, saved {stats.get('saved', 0)}.",
+            }
+
+        except Exception as e:
+            logger.error(f"Error getting monitor status: {e}")
+            return {
+                "success": False,
+                "error": str(e),
+            }
+
+    def start_monitor(self) -> None:
+        """Start the conversation monitor background task.
+
+        This must be called from an async context after __init__.
+        """
+        if self.conversation_monitor and not self._monitor_task:
+            self._monitor_task = asyncio.create_task(
+                self.conversation_monitor.monitor_loop()
+            )
+            logger.info("✅ Conversation monitor background task started")
+
+    async def stop_monitor(self) -> None:
+        """Stop the conversation monitor gracefully."""
+        if self._monitor_task and not self._monitor_task.done():
+            self._monitor_task.cancel()
+            try:
+                await self._monitor_task
+            except asyncio.CancelledError:
+                pass
+            logger.info("Conversation monitor stopped")
 
     def get_tools_schema(self) -> list[dict[str, Any]]:
         """Get MCP tools schema for registration.
@@ -1424,6 +2424,215 @@ class MemoGraphMCPServer:
                 },
             },
             {
+                "name": "batch_update",
+                "description": "Update multiple memories in one efficient operation. Much faster than calling update_memory multiple times.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "updates": {
+                            "type": "array",
+                            "description": "List of update objects",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "memory_id": {"type": "string"},
+                                    "title": {"type": "string"},
+                                    "content": {"type": "string"},
+                                    "tags": {
+                                        "type": "array",
+                                        "items": {"type": "string"},
+                                    },
+                                    "salience": {"type": "number"},
+                                },
+                                "required": ["memory_id"],
+                            },
+                        },
+                    },
+                    "required": ["updates"],
+                },
+            },
+            {
+                "name": "batch_delete",
+                "description": "Delete multiple memories in one efficient operation. Much faster than calling delete_memory multiple times.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "memory_ids": {
+                            "type": "array",
+                            "description": "List of memory IDs to delete",
+                            "items": {"type": "string"},
+                        },
+                    },
+                    "required": ["memory_ids"],
+                },
+            },
+            {
+                "name": "export_vault_tool",
+                "description": "Export vault memories to JSON, CSV, or ZIP format. Useful for backups, data portability, and integration with external tools.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "output_path": {
+                            "type": "string",
+                            "description": "Path for the export file",
+                        },
+                        "format": {
+                            "type": "string",
+                            "enum": ["json", "csv", "zip"],
+                            "description": "Export format",
+                            "default": "json",
+                        },
+                        "filter_tags": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "Optional list of tags to filter memories",
+                        },
+                        "compress": {
+                            "type": "boolean",
+                            "description": "Whether to compress the output (gzip for json/csv)",
+                            "default": False,
+                        },
+                    },
+                    "required": ["output_path"],
+                },
+            },
+            {
+                "name": "import_backup_tool",
+                "description": "Import memories from a backup file (JSON or ZIP). Useful for restoring from backups or migrating vaults.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "backup_path": {
+                            "type": "string",
+                            "description": "Path to backup file",
+                        },
+                        "merge": {
+                            "type": "boolean",
+                            "description": "If true, merge with existing. If false, clear vault first.",
+                            "default": True,
+                        },
+                        "skip_duplicates": {
+                            "type": "boolean",
+                            "description": "If true, skip memories that already exist",
+                            "default": False,
+                        },
+                    },
+                    "required": ["backup_path"],
+                },
+            },
+            {
+                "name": "create_backup_tool",
+                "description": "Create a backup of the vault. Essential for disaster recovery and version control.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "destination": {
+                            "type": "string",
+                            "description": "Destination directory or file path",
+                        },
+                        "compress": {
+                            "type": "boolean",
+                            "description": "Whether to create compressed ZIP backup",
+                            "default": True,
+                        },
+                    },
+                    "required": ["destination"],
+                },
+            },
+            {
+                "name": "get_config_value",
+                "description": "Get a configuration value from ~/.memograph/config.yaml",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "key": {
+                            "type": "string",
+                            "description": "Configuration key to get",
+                        },
+                    },
+                    "required": ["key"],
+                },
+            },
+            {
+                "name": "set_config_value",
+                "description": "Set a configuration value in ~/.memograph/config.yaml",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "key": {
+                            "type": "string",
+                            "description": "Configuration key to set",
+                        },
+                        "value": {
+                            "description": "Value to set (can be any type)",
+                        },
+                    },
+                    "required": ["key", "value"],
+                },
+            },
+            {
+                "name": "list_config_all",
+                "description": "List all configuration settings from ~/.memograph/config.yaml",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {},
+                },
+            },
+            {
+                "name": "create_profile_config",
+                "description": "Create a new configuration profile with custom settings",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "name": {
+                            "type": "string",
+                            "description": "Profile name",
+                        },
+                        "settings": {
+                            "type": "object",
+                            "description": "Profile settings dictionary",
+                        },
+                    },
+                    "required": ["name", "settings"],
+                },
+            },
+            {
+                "name": "use_profile_config",
+                "description": "Switch to a specific configuration profile",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "name": {
+                            "type": "string",
+                            "description": "Profile name to activate",
+                        },
+                    },
+                    "required": ["name"],
+                },
+            },
+            {
+                "name": "list_profiles_config",
+                "description": "List all available configuration profiles",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {},
+                },
+            },
+            {
+                "name": "delete_profile_config",
+                "description": "Delete a configuration profile",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "name": {
+                            "type": "string",
+                            "description": "Profile name to delete",
+                        },
+                    },
+                    "required": ["name"],
+                },
+            },
+            {
                 "name": "list_available_tools",
                 "description": "List all available MCP tools with their descriptions and categories",
                 "inputSchema": {
@@ -1433,7 +2642,15 @@ class MemoGraphMCPServer:
             },
             {
                 "name": "auto_hook_query",
-                "description": "Autonomous hook for user queries - automatically searches vault and provides context. Call this at the START of every user interaction to get relevant context automatically.",
+                "description": (
+                    "🔍 AUTO-SEARCH VAULT - Call at the START of a conversation to search for relevant context.\n\n"
+                    "⚠️ NOTE: Usually it's better to just use 'search_vault' or 'query_with_context' directly.\n\n"
+                    "This tool:\n"
+                    "1. Searches the vault for relevant memories\n"
+                    "2. Optionally saves the query itself (usually disabled)\n"
+                    "3. Returns context and sources\n\n"
+                    "Most users don't need this - use 'search_vault' instead."
+                ),
                 "inputSchema": {
                     "type": "object",
                     "properties": {
@@ -1459,7 +2676,25 @@ class MemoGraphMCPServer:
             },
             {
                 "name": "auto_hook_response",
-                "description": "Autonomous hook for AI responses - saves the complete interaction. Call this at the END of every user interaction to save the conversation automatically.",
+                "description": (
+                    "💾 SAVE CONVERSATION - Call this IMMEDIATELY after answering to save our exchange.\n\n"
+                    "⚠️ IMPORTANT: This tool is NOT automatic - you must explicitly call it after each meaningful exchange.\n\n"
+                    "✅ WHEN TO CALL:\n"
+                    "- After answering questions\n"
+                    "- After providing insights or advice\n"
+                    "- After planning or decision-making conversations\n"
+                    "- After any exchange worth remembering\n\n"
+                    "❌ SKIP FOR:\n"
+                    "- Simple greetings ('hi', 'hello')\n"
+                    "- Acknowledgments ('ok', 'thanks')\n"
+                    "- Clarification questions\n\n"
+                    "📝 USAGE:\n"
+                    "auto_hook_response(\n"
+                    "    user_query='User's question here',\n"
+                    "    ai_response='Your complete answer here'\n"
+                    ")\n\n"
+                    "This builds conversation history for future reference."
+                ),
                 "inputSchema": {
                     "type": "object",
                     "properties": {
@@ -1629,6 +2864,223 @@ class MemoGraphMCPServer:
                         },
                     },
                     "required": ["memories"],
+                },
+            },
+            {
+                "name": "verify_last_save",
+                "description": (
+                    "🔍 VERIFY AUTO-SAVE - Check if your last conversation was saved.\n\n"
+                    "Use this to:\n"
+                    "- Confirm auto-save is working\n"
+                    "- Debug save issues\n"
+                    "- Get peace of mind that exchanges are being preserved\n\n"
+                    "Returns details about the most recent save or troubleshooting tips if none found."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "time_window_seconds": {
+                            "type": "number",
+                            "description": "How far back to check in seconds (default: 60)",
+                            "default": 60,
+                        },
+                        "conversation_only": {
+                            "type": "boolean",
+                            "description": "Only check conversation memories (default: true)",
+                            "default": True,
+                        },
+                    },
+                },
+            },
+            {
+                "name": "get_save_stats",
+                "description": (
+                    "📊 SAVE STATISTICS - Get statistics about auto-save success rate.\n\n"
+                    "Shows:\n"
+                    "- How many saves have succeeded vs failed\n"
+                    "- Save rate percentage\n"
+                    "- Memory counts by type\n"
+                    "- Status interpretation (excellent/good/poor/critical)\n\n"
+                    "Helps you understand if auto-save is working effectively."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "period": {
+                            "type": "string",
+                            "enum": ["session", "hour", "day", "week", "all"],
+                            "description": "Time period to analyze (default: session)",
+                            "default": "session",
+                        },
+                    },
+                },
+            },
+            {
+                "name": "get_auto_save_analytics",
+                "description": (
+                    "📊 AUTO-SAVE ANALYTICS - Get comprehensive analytics on the hybrid auto-save system.\n\n"
+                    "Shows detailed metrics:\n"
+                    "- Overall save rate and performance grade (A+ to F)\n"
+                    "- Layer 1 (explicit AI saves) vs Layer 2 (monitor) breakdown\n"
+                    "- Total conversations saved vs estimated missed\n"
+                    "- Monitor statistics (if enabled)\n"
+                    "- Actionable recommendations for improvement\n\n"
+                    "Use this to understand auto-save effectiveness and optimize configuration."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "period": {
+                            "type": "string",
+                            "enum": ["hour", "day", "week", "all"],
+                            "description": "Time period for analytics (default: day)",
+                            "default": "day",
+                        },
+                        "include_recommendations": {
+                            "type": "boolean",
+                            "description": "Include improvement recommendations (default: true)",
+                            "default": True,
+                        },
+                    },
+                },
+            },
+            {
+                "name": "get_monitor_status",
+                "description": (
+                    "🔍 MONITOR DIAGNOSTICS - Check if Layer 2 conversation monitor is running.\n\n"
+                    "Shows:\n"
+                    "- Whether monitor is enabled and active\n"
+                    "- Detection statistics\n"
+                    "- Background loop status\n"
+                    "- Recent activity\n\n"
+                    "Use this to diagnose why auto-save isn't working."
+                ),
+                "inputSchema": {"type": "object", "properties": {}},
+            },
+            {
+                "name": "suggest_tags",
+                "description": "Suggest tags for a note using AI analysis. Analyzes content using frequency, semantic similarity, structure, and related notes to recommend relevant tags.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "content": {
+                            "type": "string",
+                            "description": "Note content to analyze",
+                        },
+                        "title": {
+                            "type": "string",
+                            "description": "Note title (optional)",
+                        },
+                        "existing_tags": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "Tags already assigned to the note (optional)",
+                        },
+                        "min_confidence": {
+                            "type": "number",
+                            "description": "Minimum confidence score 0.0-1.0 (default: 0.3)",
+                            "default": 0.3,
+                        },
+                        "max_suggestions": {
+                            "type": "integer",
+                            "description": "Maximum number of suggestions (default: 5)",
+                            "default": 5,
+                        },
+                    },
+                    "required": ["content"],
+                },
+            },
+            {
+                "name": "suggest_links",
+                "description": "Suggest wikilinks for a note using semantic similarity and graph analysis. Analyzes content, graph relationships, and context to recommend relevant connections to other notes. Includes bidirectional link suggestions (notes that should link to this one).",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "content": {
+                            "type": "string",
+                            "description": "Note content to analyze",
+                        },
+                        "title": {
+                            "type": "string",
+                            "description": "Note title (optional)",
+                        },
+                        "note_id": {
+                            "type": "string",
+                            "description": "Note ID for graph-based suggestions (optional)",
+                        },
+                        "existing_links": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "Links already in the note to exclude (optional)",
+                        },
+                        "min_confidence": {
+                            "type": "number",
+                            "description": "Minimum confidence score 0.0-1.0 (default: 0.4)",
+                            "default": 0.4,
+                        },
+                        "max_suggestions": {
+                            "type": "integer",
+                            "description": "Maximum number of suggestions (default: 10)",
+                            "default": 10,
+                        },
+                    },
+                    "required": ["content"],
+                },
+            },
+            {
+                "name": "detect_knowledge_gaps",
+                "description": "Detect knowledge gaps in the vault including missing topics, weak coverage, isolated notes, and missing links. Provides actionable suggestions for improving the knowledge base structure and completeness.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "min_severity": {
+                            "type": "number",
+                            "description": "Minimum severity threshold 0.0-1.0 (default: 0.3)",
+                            "default": 0.3,
+                        },
+                        "max_gaps": {
+                            "type": "integer",
+                            "description": "Maximum number of gaps to return (default: 20)",
+                            "default": 20,
+                        },
+                        "gap_types": {
+                            "type": "array",
+                            "items": {
+                                "type": "string",
+                                "enum": [
+                                    "missing_topic",
+                                    "weak_coverage",
+                                    "isolated_note",
+                                    "missing_link",
+                                ],
+                            },
+                            "description": "Specific gap types to detect (optional). Options: missing_topic, weak_coverage, isolated_note, missing_link",
+                        },
+                    },
+                },
+            },
+            {
+                "name": "analyze_knowledge_base",
+                "description": "Perform comprehensive knowledge base analysis including gap detection, topic clustering, and learning path suggestions. Provides insights into the structure, completeness, and organization of the knowledge base with actionable recommendations.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "include_gaps": {
+                            "type": "boolean",
+                            "description": "Include gap detection analysis (default: true)",
+                            "default": True,
+                        },
+                        "include_clusters": {
+                            "type": "boolean",
+                            "description": "Include topic clustering analysis (default: true)",
+                            "default": True,
+                        },
+                        "include_paths": {
+                            "type": "boolean",
+                            "description": "Include learning path suggestions (default: true)",
+                            "default": True,
+                        },
+                    },
                 },
             },
         ]

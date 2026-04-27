@@ -2,6 +2,7 @@ import asyncio
 import logging
 import os
 import re
+import threading
 import time as time_module
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -372,6 +373,15 @@ class MemoryKernel:
                 f"query_ttl={query_cache_ttl}s"
             )
 
+        # Ingest failure tracking (Fix #4)
+        self._last_ingest_error: Exception | None = None
+        self._ingest_attempt_count = 0
+        self._max_auto_ingest_attempts = 3
+
+        # Thread safety for graph operations (Fix #5)
+        self._graph_lock = threading.RLock()
+        self._graph_version = 0
+
         logger.info("MemoGraph kernel initialized successfully")
 
     @classmethod
@@ -539,6 +549,30 @@ class MemoryKernel:
         slug = re.sub(r"[^a-zA-Z0-9]+", "-", text.strip().lower()).strip("-")
         return slug or datetime.now(timezone.utc).strftime("memory-%Y%m%d-%H%M%S")
 
+    @staticmethod
+    def _atomic_write(file_path: Path, content: str) -> None:
+        """Write file atomically using temp file + rename to prevent corruption.
+
+        Args:
+            file_path: Target file path to write to
+            content: Content to write
+
+        Raises:
+            OSError: If write or rename fails
+        """
+        temp_path = file_path.with_suffix(".tmp")
+        try:
+            temp_path.write_text(content, encoding="utf-8")
+            temp_path.replace(file_path)  # Atomic on POSIX and Windows
+        except Exception:
+            # Clean up temp file on failure (best effort)
+            if temp_path.exists():
+                try:
+                    temp_path.unlink()
+                except Exception:
+                    pass  # Best effort cleanup
+            raise
+
     def ingest(
         self, force: bool = False, auto_extract: bool | None = None
     ) -> dict[str, int]:
@@ -577,51 +611,75 @@ class MemoryKernel:
             >>> stats = kernel.ingest(auto_extract=True)
             >>> print(f"Extracted {stats['entities_extracted']} entities")
         """
-        logger.info(f"Starting ingestion from vault: {self.vault_path}")
+        # Thread-safe graph rebuild (Fix #5)
+        with self._graph_lock:
+            try:
+                logger.info(
+                    f"Acquiring graph lock for ingest (version: {self._graph_version})"
+                )
+                logger.info(f"Starting ingestion from vault: {self.vault_path}")
 
-        # Rebuild graph from scratch
-        self.graph = VaultGraph()
-        indexed, skipped = self.indexer.index(self.graph, force=force)
+                # Rebuild graph from scratch
+                self.graph = VaultGraph()
+                indexed, skipped = self.indexer.index(self.graph, force=force)
 
-        # Recreate retriever with same configuration
-        if self.use_gam:
-            self.retriever = GAMRetriever(
-                self.graph,
-                embedding_adapter=self.retriever.embeddings,
-                use_gam=True,
-                gam_config=self.gam_config,
-                access_tracker=getattr(
-                    self.retriever, "access_tracker", None
-                ),  # Preserve tracker
-            )
-        else:
-            self.retriever = HybridRetriever(
-                self.graph, embedding_adapter=self.retriever.embeddings
-            )
+                # Recreate retriever with same configuration
+                if self.use_gam:
+                    self.retriever = GAMRetriever(
+                        self.graph,
+                        embedding_adapter=self.retriever.embeddings,
+                        use_gam=True,
+                        gam_config=self.gam_config,
+                        access_tracker=getattr(
+                            self.retriever, "access_tracker", None
+                        ),  # Preserve tracker
+                    )
+                else:
+                    self.retriever = HybridRetriever(
+                        self.graph, embedding_adapter=self.retriever.embeddings
+                    )
 
-        logger.info(f"Indexed {indexed} files, skipped {skipped} unchanged files")
+                logger.info(
+                    f"Indexed {indexed} files, skipped {skipped} unchanged files"
+                )
 
-        # Perform auto-extraction if enabled
-        extract_enabled = (
-            auto_extract if auto_extract is not None else self.auto_extract
-        )
-        entities_extracted = 0
+                # Perform auto-extraction if enabled
+                extract_enabled = (
+                    auto_extract if auto_extract is not None else self.auto_extract
+                )
+                entities_extracted = 0
 
-        if extract_enabled and self.organizer:
-            logger.info("Starting entity extraction from memories")
-            entities_extracted = self._extract_entities_from_memories()
-            logger.info(f"Extracted {entities_extracted} total entities")
+                if extract_enabled and self.organizer:
+                    logger.info("Starting entity extraction from memories")
+                    entities_extracted = self._extract_entities_from_memories()
+                    logger.info(f"Extracted {entities_extracted} total entities")
 
-        total = len(self.graph._nodes)
+                total = len(self.graph._nodes)
 
-        logger.info(f"Ingestion complete: {total} total memories in graph")
+                self._graph_version += 1
+                logger.info(f"Graph rebuilt (version: {self._graph_version})")
+                logger.info(f"Ingestion complete: {total} total memories in graph")
 
-        return {
-            "indexed": indexed,
-            "skipped": skipped,
-            "total": total,
-            "entities_extracted": entities_extracted,
-        }
+                # Clear error state on success (Fix #4)
+                self._last_ingest_error = None
+                self._ingest_attempt_count = 0
+
+                return {
+                    "indexed": indexed,
+                    "skipped": skipped,
+                    "total": total,
+                    "entities_extracted": entities_extracted,
+                }
+
+            except Exception as e:
+                # Track failure (Fix #4)
+                self._last_ingest_error = e
+                self._ingest_attempt_count += 1
+                logger.error(
+                    f"Ingest failed (attempt {self._ingest_attempt_count}): {e}",
+                    exc_info=True,
+                )
+                raise
 
     def _extract_entities_from_memories(self) -> int:
         """
@@ -873,7 +931,11 @@ class MemoryKernel:
         created_at = datetime.now(timezone.utc).isoformat()
         tags_line = " ".join(f"#{tag}" for tag in normalized_tags)
 
+        # Generate unique ID from slug
+        memory_id = slug
+
         payload = {
+            "id": memory_id,
             "title": title,
             "memory_type": memory_type.value,
             "created": created_at,
@@ -893,8 +955,29 @@ class MemoryKernel:
         if tags_line:
             body = f"{body}\n\n{tags_line}"
 
-        # Write file
-        file_path.write_text(frontmatter + body + "\n", encoding="utf-8")
+        # Write file with disk space handling (Fix #7)
+        try:
+            file_path.write_text(frontmatter + body + "\n", encoding="utf-8")
+        except OSError as e:
+            # Handle disk full, permission errors, etc.
+            if file_path.exists():
+                # Clean up partial write
+                try:
+                    file_path.unlink()
+                except Exception:
+                    pass  # Best effort cleanup
+
+            if e.errno == 28 or "No space left" in str(e):  # ENOSPC
+                raise OSError(
+                    f"Disk full: Cannot write memory '{title}' to {file_path}. "
+                    f"Free up disk space and try again."
+                ) from e
+            elif e.errno == 13:  # EACCES
+                raise PermissionError(
+                    f"Permission denied: Cannot write to {file_path}"
+                ) from e
+            else:
+                raise OSError(f"Failed to write memory '{title}': {e}") from e
 
         logger.info(f"Created memory: {title} -> {file_path.name}")
         logger.debug(
@@ -1059,16 +1142,13 @@ class MemoryKernel:
 
         for idx, (memory_id, update_data) in enumerate(updates):
             try:
-                # Find the memory file
-                memory_path: Path | None = None
-                for md_file in self.vault_path.rglob("*.md"):
-                    if md_file.stem == memory_id or md_file.stem.startswith(
-                        f"{memory_id}-"
-                    ):
-                        memory_path = md_file
-                        break
+                # Find the memory file using graph lookup (much faster than rglob)
+                node = self.graph.get(memory_id)
+                if not node or not node.source_path:
+                    raise ValueError(f"Memory not found in graph: {memory_id}")
 
-                if not memory_path or not memory_path.exists():
+                memory_path = Path(node.source_path)
+                if not memory_path.exists():
                     raise ValueError(f"Memory file not found for ID: {memory_id}")
 
                 # Read existing content
@@ -1127,7 +1207,7 @@ class MemoryKernel:
                     + yaml.safe_dump(frontmatter, sort_keys=False).strip()
                     + "\n---\n\n"
                 )
-                memory_path.write_text(new_frontmatter + body + "\n", encoding="utf-8")  # type: ignore[union-attr]
+                self._atomic_write(memory_path, new_frontmatter + body + "\n")  # type: ignore[union-attr]
 
                 successful_ids.append(memory_id)
                 logger.debug(
@@ -1257,10 +1337,30 @@ class MemoryKernel:
 
         normalized_tags = self._normalize_tags(tags)
 
-        # Auto-ingest if graph is empty
+        # Auto-ingest with failure tracking (Fix #4)
         if not self.graph._nodes:
-            logger.info("Graph is empty, running auto-ingest")
-            self.ingest()
+            if self._last_ingest_error:
+                raise RuntimeError(
+                    f"Cannot retrieve - ingest failed:\n"
+                    f"  {type(self._last_ingest_error).__name__}: "
+                    f"{self._last_ingest_error}\n\n"
+                    f"Fix issues and call kernel.ingest(force=True)"
+                )
+
+            if self._ingest_attempt_count >= self._max_auto_ingest_attempts:
+                raise RuntimeError(
+                    f"Auto-ingest failed {self._ingest_attempt_count} times. "
+                    f"Check logs and retry manually."
+                )
+
+            logger.info(
+                f"Auto-ingest attempt {self._ingest_attempt_count + 1}/"
+                f"{self._max_auto_ingest_attempts}"
+            )
+            try:
+                self.ingest()
+            except Exception as e:
+                raise RuntimeError(f"Auto-ingest failed: {e}") from e
 
         # Keyword-based seed finding
         query_words = [w.lower() for w in re.findall(r"\w+", query) if len(w) > 2]
@@ -1272,24 +1372,27 @@ class MemoryKernel:
 
         logger.debug(f"Found {len(seed_ids)} seed nodes for query: '{query}'")
 
-        start_time = time_module.time()
-        results = self.retriever.retrieve(
-            query=query,
-            seed_ids=seed_ids,
-            tags=normalized_tags,
-            depth=depth,
-            top_k=top_k,
-        )
-        duration = time_module.time() - start_time
+        # Retrieval with thread safety (Fix #5)
+        with self._graph_lock:
+            start_time = time_module.time()
+            results = self.retriever.retrieve(
+                query=query,
+                seed_ids=seed_ids,
+                tags=normalized_tags,
+                depth=depth,
+                top_k=top_k,
+            )
+            duration = time_module.time() - start_time
+
+            logger.info(
+                f"Retrieved {len(results)} nodes "
+                f"(graph v{self._graph_version}) in {duration:.3f}s"
+            )
 
         # Cache results
         if use_cache and self.query_cache:
             cache_key = f"{query}|{tags}|{depth}|{top_k}"
             self.query_cache.put(cache_key, results)
-
-        logger.info(
-            f"Retrieved {len(results)} nodes for query: '{query}' in {duration:.3f}s"
-        )
 
         return results
 
@@ -1380,22 +1483,30 @@ class MemoryKernel:
 
         # Apply recency boost if requested
         if options.boost_recent and options.time_decay_factor:
+            import copy
+            import math
             import time
 
             current_time = time.time()
 
+            # Create copies to avoid modifying original nodes (prevents side effects)
+            boosted_results = []
             for node in results:
+                # Create shallow copy to avoid modifying original
+                boosted_node = copy.copy(node)
+
                 # Calculate time difference in days
                 node_time = node.created_at.timestamp()
                 days_old = (current_time - node_time) / (24 * 3600)
 
                 # Apply exponential decay: score * exp(-decay_factor * days)
-                import math
-
                 recency_factor = math.exp(-options.time_decay_factor * days_old)
 
-                # Boost salience by recency
-                node.salience = node.salience * (0.5 + 0.5 * recency_factor)
+                # Boost salience on the copy
+                boosted_node.salience = node.salience * (0.5 + 0.5 * recency_factor)
+                boosted_results.append(boosted_node)
+
+            results = boosted_results
 
             # Re-sort by boosted salience
             results.sort(key=lambda n: n.salience, reverse=True)
@@ -1544,6 +1655,343 @@ class MemoryKernel:
             raise RuntimeError("Retriever is not a GAMRetriever instance")
 
         return self.retriever.get_access_statistics()
+
+    def get_vault_statistics(self, detailed: bool = False) -> dict[str, Any]:
+        """Get comprehensive vault statistics.
+
+        Args:
+            detailed: If True, include detailed breakdowns and top tags
+
+        Returns:
+            Dictionary with vault statistics
+
+        Example:
+            >>> kernel = MemoryKernel(vault_path="./vault")
+            >>> stats = kernel.get_vault_statistics(detailed=True)
+            >>> print(f"Total memories: {stats['total_memories']}")
+        """
+        all_nodes = self.graph.all_nodes()
+
+        if not all_nodes:
+            return {
+                "total_memories": 0,
+                "by_type": {},
+                "by_tag": {},
+                "salience_avg": 0.0,
+                "salience_distribution": {"low": 0, "medium": 0, "high": 0},
+                "total_tags": 0,
+                "total_content_size": 0,
+            }
+
+        stats: dict[str, Any] = {
+            "total_memories": len(all_nodes),
+            "by_type": {},
+            "by_tag": {},
+            "salience_avg": 0.0,
+            "salience_distribution": {"low": 0, "medium": 0, "high": 0},
+            "total_tags": 0,
+            "total_content_size": 0,
+        }
+
+        salience_sum = 0.0
+        all_tags = set()
+
+        for node in all_nodes:
+            mem_type = node.memory_type.value
+            stats["by_type"][mem_type] = stats["by_type"].get(mem_type, 0) + 1
+
+            for tag in node.tags:
+                stats["by_tag"][tag] = stats["by_tag"].get(tag, 0) + 1
+                all_tags.add(tag)
+
+            salience_sum += node.salience
+
+            if node.salience < 0.4:
+                stats["salience_distribution"]["low"] += 1
+            elif node.salience < 0.7:
+                stats["salience_distribution"]["medium"] += 1
+            else:
+                stats["salience_distribution"]["high"] += 1
+
+            stats["total_content_size"] += len(node.content)
+
+        stats["salience_avg"] = salience_sum / len(all_nodes)
+        stats["total_tags"] = len(all_tags)
+
+        if detailed and stats["by_tag"]:
+            top_tags = sorted(
+                stats["by_tag"].items(), key=lambda x: x[1], reverse=True
+            )[:10]
+            stats["top_tags"] = top_tags
+
+        return stats
+
+    def export_vault(
+        self,
+        output_path: str,
+        format: Literal["json", "csv", "zip"] = "json",
+        filter_tags: list[str] | None = None,
+        compress: bool = False,
+    ) -> Path:
+        """Export vault memories to specified format.
+
+        Args:
+            output_path: Path for the export file
+            format: Export format - 'json', 'csv', or 'zip'
+            filter_tags: Optional list of tags to filter memories
+            compress: Whether to compress the output (gzip for json/csv)
+
+        Returns:
+            Path to the created export file
+
+        Example:
+            >>> kernel = MemoryKernel(vault_path="./vault")
+            >>> path = kernel.export_vault("backup.json", format="json")
+        """
+        import csv
+        import gzip
+        import json
+        import zipfile
+
+        output = Path(output_path).expanduser()
+        all_nodes = self.graph.all_nodes()
+
+        if filter_tags:
+            nodes = [n for n in all_nodes if any(tag in n.tags for tag in filter_tags)]
+        else:
+            nodes = all_nodes
+
+        if not nodes:
+            raise ValueError("No memories found to export")
+
+        logger.info(f"Exporting {len(nodes)} memories to {format} format")
+
+        if format == "json":
+            memories_data = [
+                {
+                    "id": n.id,
+                    "title": n.title,
+                    "content": n.content,
+                    "memory_type": n.memory_type.value,
+                    "tags": n.tags,
+                    "salience": n.salience,
+                    "created": n.created_at.isoformat() if n.created_at else None,
+                    "modified": n.modified_at.isoformat() if n.modified_at else None,
+                    "links": n.links,
+                }
+                for n in nodes
+            ]
+            export_data = {
+                "export_date": datetime.now(timezone.utc).isoformat(),
+                "version": "1.0",
+                "count": len(memories_data),
+                "memories": memories_data,
+            }
+            json_str = json.dumps(export_data, indent=2, ensure_ascii=False)
+            if compress:
+                output = output.with_suffix(".json.gz")
+                with gzip.open(output, "wt", encoding="utf-8") as f:
+                    f.write(json_str)
+            else:
+                output.write_text(json_str, encoding="utf-8")
+
+        elif format == "csv":
+            csv_rows = [
+                {
+                    "id": n.id,
+                    "title": n.title,
+                    "content": n.content,
+                    "memory_type": n.memory_type.value,
+                    "tags": ";".join(n.tags),
+                    "salience": n.salience,
+                    "created": n.created_at.isoformat() if n.created_at else "",
+                }
+                for n in nodes
+            ]
+            import io
+
+            csv_buffer = io.StringIO()
+            if csv_rows:
+                writer = csv.DictWriter(csv_buffer, fieldnames=csv_rows[0].keys())
+                writer.writeheader()
+                writer.writerows(csv_rows)
+            csv_content = csv_buffer.getvalue()
+            if compress:
+                output = output.with_suffix(".csv.gz")
+                with gzip.open(output, "wt", encoding="utf-8") as f:
+                    f.write(csv_content)
+            else:
+                output.write_text(csv_content, encoding="utf-8")
+
+        elif format == "zip":
+            with zipfile.ZipFile(output, "w", zipfile.ZIP_DEFLATED) as zipf:
+                for node in nodes:
+                    if node.source_path:
+                        source = Path(node.source_path)
+                        if source.exists():
+                            arcname = source.relative_to(self.vault_path)
+                            zipf.write(source, arcname)
+        else:
+            raise ValueError(f"Unsupported format: {format}")
+
+        logger.info(f"Export complete: {output}")
+        return output
+
+    def import_backup(
+        self,
+        backup_path: str,
+        merge: bool = True,
+        skip_duplicates: bool = False,
+    ) -> dict[str, int]:
+        """Import memories from a backup file.
+
+        Args:
+            backup_path: Path to backup file (JSON, ZIP, or gzipped JSON)
+            merge: If True, merge with existing. If False, clear vault first.
+            skip_duplicates: If True, skip memories that already exist
+
+        Returns:
+            Dictionary with import statistics
+
+        Example:
+            >>> kernel = MemoryKernel(vault_path="./vault")
+            >>> stats = kernel.import_backup("backup.json", merge=True)
+        """
+        import gzip
+        import json
+        import tempfile
+        import zipfile
+
+        backup = Path(backup_path).expanduser()
+        if not backup.exists():
+            raise FileNotFoundError(f"Backup file not found: {backup}")
+
+        logger.info(f"Importing from backup: {backup}")
+        memories = []
+
+        if backup.suffix.lower() == ".zip":
+            with tempfile.TemporaryDirectory() as tmpdir:
+                with zipfile.ZipFile(backup, "r") as zipf:
+                    zipf.extractall(tmpdir)
+                for md_file in Path(tmpdir).rglob("*.md"):
+                    try:
+                        content = md_file.read_text(encoding="utf-8")
+                        if content.startswith("---\n"):
+                            parts = content.split("---\n", 2)
+                            if len(parts) >= 3:
+                                frontmatter = yaml.safe_load(parts[1])
+                                body = parts[2].strip()
+                                memories.append(
+                                    {
+                                        "id": frontmatter.get("id", ""),
+                                        "title": frontmatter.get("title", ""),
+                                        "content": body,
+                                        "memory_type": frontmatter.get(
+                                            "memory_type", "fact"
+                                        ),
+                                        "tags": frontmatter.get("tags", []),
+                                        "salience": frontmatter.get("salience", 0.5),
+                                    }
+                                )
+                    except Exception as e:
+                        logger.warning(f"Failed to parse {md_file}: {e}")
+        else:
+            if backup.suffix.lower() == ".gz":
+                with gzip.open(backup, "rt", encoding="utf-8") as f:
+                    data = json.load(f)
+            else:
+                data = json.loads(backup.read_text(encoding="utf-8"))
+            if isinstance(data, dict) and "memories" in data:
+                memories = data["memories"]
+            elif isinstance(data, list):
+                memories = data
+            else:
+                raise ValueError("Invalid backup format")
+
+        if not memories:
+            raise ValueError("No memories found in backup")
+
+        logger.info(f"Found {len(memories)} memories in backup")
+
+        if not merge:
+            logger.warning("Clearing existing vault (merge=False)")
+            for md_file in self.vault_path.rglob("*.md"):
+                md_file.unlink()
+
+        imported = 0
+        skipped = 0
+        failed = 0
+
+        for memory in memories:
+            try:
+                if skip_duplicates:
+                    memory_id = memory.get("id", "")
+                    if memory_id and self.graph.get(memory_id):
+                        skipped += 1
+                        continue
+                self.remember(
+                    title=memory.get("title", "Untitled"),
+                    content=memory.get("content", ""),
+                    memory_type=MemoryType(memory.get("memory_type", "fact")),
+                    tags=memory.get("tags", []),
+                    salience=memory.get("salience", 0.5),
+                )
+                imported += 1
+            except Exception as e:
+                logger.warning(f"Failed to import memory: {e}")
+                failed += 1
+
+        if imported > 0:
+            logger.info("Rebuilding graph...")
+            self.ingest(force=True)
+
+        logger.info(
+            f"Import complete: {imported} imported, {skipped} skipped, {failed} failed"
+        )
+        return {"imported": imported, "skipped": skipped, "failed": failed}
+
+    def create_backup(
+        self,
+        destination: str,
+        compress: bool = True,
+    ) -> Path:
+        """Create a backup of the vault.
+
+        Args:
+            destination: Destination directory or file path for the backup
+            compress: Whether to create a compressed ZIP backup
+
+        Returns:
+            Path to the created backup
+
+        Example:
+            >>> kernel = MemoryKernel(vault_path="./vault")
+            >>> backup = kernel.create_backup("./backups", compress=True)
+        """
+        import shutil
+        import zipfile
+
+        dest = Path(destination).expanduser()
+        timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+        vault_name = self.vault_path.name
+        backup_name = f"{vault_name}_backup_{timestamp}"
+
+        if compress:
+            backup_path = dest / f"{backup_name}.zip" if dest.is_dir() else dest
+            backup_path.parent.mkdir(parents=True, exist_ok=True)
+            logger.info(f"Creating compressed backup: {backup_path}")
+            with zipfile.ZipFile(backup_path, "w", zipfile.ZIP_DEFLATED) as zipf:
+                for md_file in self.vault_path.rglob("*.md"):
+                    arcname = md_file.relative_to(self.vault_path)
+                    zipf.write(md_file, arcname)
+        else:
+            backup_path = dest / backup_name if dest.is_dir() else dest
+            backup_path.parent.mkdir(parents=True, exist_ok=True)
+            logger.info(f"Creating directory backup: {backup_path}")
+            shutil.copytree(self.vault_path, backup_path, dirs_exist_ok=True)
+
+        logger.info(f"Backup created: {backup_path}")
+        return backup_path
 
     # ==================== Cache Management ====================
 

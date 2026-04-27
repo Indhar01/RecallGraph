@@ -159,3 +159,118 @@ class ErrorResponse(BaseModel):
     error: str
     detail: str | None = None
     code: str | None = None
+
+
+# AI Features Models
+
+
+class TagSuggestionRequest(BaseModel):
+    """Request model for tag suggestions."""
+
+    content: str = Field(..., min_length=1)
+    title: str = Field(default="")
+    existing_tags: list[str] = Field(default_factory=list)
+    min_confidence: float = Field(default=0.3, ge=0.0, le=1.0)
+    max_suggestions: int = Field(default=5, ge=1, le=20)
+
+
+class TagSuggestionItem(BaseModel):
+    """Single tag suggestion."""
+
+    tag: str
+    confidence: float
+    reason: str
+    source: str
+
+
+class TagSuggestionResponse(BaseModel):
+    """Response model for tag suggestions."""
+
+    suggestions: list[TagSuggestionItem]
+    total: int
+
+
+class LinkSuggestionRequest(BaseModel):
+    """Request model for link suggestions."""
+
+    content: str = Field(..., min_length=1)
+    title: str = Field(default="")
+    note_id: str | None = None
+    existing_links: list[str] = Field(default_factory=list)
+    min_confidence: float = Field(default=0.4, ge=0.0, le=1.0)
+    max_suggestions: int = Field(default=10, ge=1, le=50)
+
+
+class LinkSuggestionItem(BaseModel):
+    """Single link suggestion."""
+
+    target_title: str
+    target_id: str
+    confidence: float
+    reason: str
+    source: str
+    bidirectional: bool = False
+
+
+class LinkSuggestionResponse(BaseModel):
+    """Response model for link suggestions."""
+
+    suggestions: list[LinkSuggestionItem]
+    total: int
+
+
+class KnowledgeGapItem(BaseModel):
+    """Single knowledge gap."""
+
+    gap_type: str
+    title: str
+    description: str
+    severity: float
+    suggestions: list[str]
+    related_notes: list[str]
+
+
+class GapDetectionResponse(BaseModel):
+    """Response model for gap detection."""
+
+    gaps: list[KnowledgeGapItem]
+    total: int
+    gap_types: dict[str, int]
+    avg_severity: float
+
+
+class TopicClusterItem(BaseModel):
+    """Single topic cluster."""
+
+    name: str
+    size: int
+    keywords: list[str]
+    density: float
+    coverage: float
+
+
+class LearningPathItem(BaseModel):
+    """Single learning path."""
+
+    topic: str
+    notes: list[tuple[str, str]]
+    order: str
+    completeness: float
+    missing_steps: list[str]
+
+
+class KnowledgeBaseAnalysisResponse(BaseModel):
+    """Response model for comprehensive knowledge base analysis."""
+
+    summary: dict[str, Any]
+    gaps: list[dict[str, Any]]
+    clusters: list[dict[str, Any]]
+    learning_paths: list[dict[str, Any]]
+
+
+class FeedbackRequest(BaseModel):
+    """Request model for recording user feedback."""
+
+    feedback_type: str = Field(..., pattern="^(tag|link|gap)$")
+    item_id: str = Field(..., min_length=1)
+    accepted: bool

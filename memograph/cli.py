@@ -9,9 +9,39 @@ from datetime import datetime
 from pathlib import Path
 from urllib import error, request
 
+# Fix Windows console encoding for Unicode characters
+if sys.platform == "win32":
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")
+        sys.stderr.reconfigure(encoding="utf-8")
+    except (AttributeError, OSError):
+        # Fallback for older Python versions or if reconfigure fails
+        import codecs
+
+        sys.stdout = codecs.getwriter("utf-8")(sys.stdout.buffer, "strict")
+        sys.stderr = codecs.getwriter("utf-8")(sys.stderr.buffer, "strict")
+
 from .core.assistant import build_answer_prompt, retrieve_cited_context, run_answer
 from .core.enums import MemoryType
 from .core.kernel import MemoryKernel
+from .cli_helpers import (
+    run_update_command,
+    run_delete_command,
+    run_list_command,
+    run_search_command,
+)
+from .cli_batch_helpers import (
+    run_batch_create_command,
+    run_batch_update_command,
+    run_batch_delete_command,
+)
+from .cli_infrastructure_helpers import (
+    run_export_command,
+    run_import_backup_command,
+    run_backup_command,
+    run_config_command,
+    run_stats_command,
+)
 
 
 class Spinner:
@@ -390,7 +420,7 @@ def _save_conversation_combined(
 
 
 def _run_doctor(args) -> None:
-    print("=== Mnemo Doctor ===")
+    print("=== MemoGraph Doctor ===")
     vault = MemoryKernel(args.vault)
     stats = vault.ingest(force=False)
     print(f"vault: {vault.vault_path}")
@@ -416,7 +446,14 @@ def _run_doctor(args) -> None:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Mnemo CLI")
+    from . import __version__
+
+    parser = argparse.ArgumentParser(
+        description="MemoGraph CLI - AI-Powered Knowledge Management"
+    )
+    parser.add_argument(
+        "--version", action="version", version=f"memograph {__version__}"
+    )
     parser.add_argument("--vault", default="~/my-vault", help="Path to memory vault")
 
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -425,8 +462,12 @@ def main():
     ingest_parser.add_argument("--force", action="store_true", help="Reindex all files")
 
     remember_parser = subparsers.add_parser("remember", help="Create a new memory note")
-    remember_parser.add_argument("--title", required=True, help="Memory title")
-    remember_parser.add_argument("--content", required=True, help="Memory content")
+    remember_parser.add_argument(
+        "--title", help="Memory title (will prompt if not provided)"
+    )
+    remember_parser.add_argument(
+        "--content", help="Memory content (will prompt if not provided)"
+    )
     remember_parser.add_argument(
         "--type",
         choices=[member.value for member in MemoryType],
@@ -438,6 +479,12 @@ def main():
         nargs="*",
         default=[],
         help="Tags (with or without # prefix)",
+    )
+    remember_parser.add_argument(
+        "--salience",
+        type=float,
+        default=0.5,
+        help="Memory salience/importance (0.0 to 1.0, default: 0.5)",
     )
 
     context_parser = subparsers.add_parser(
@@ -607,6 +654,454 @@ def main():
 
     subparsers.add_parser("verify-mcp", help="Verify MCP setup and configuration")
 
+    suggest_tags_parser = subparsers.add_parser(
+        "suggest-tags", help="Suggest tags for a note file using AI analysis"
+    )
+    suggest_tags_parser.add_argument(
+        "file_path", help="Path to the note file to analyze"
+    )
+    suggest_tags_parser.add_argument(
+        "--min-confidence",
+        type=float,
+        default=0.3,
+        help="Minimum confidence score (0.0-1.0, default: 0.3)",
+    )
+    suggest_tags_parser.add_argument(
+        "--max-suggestions",
+        type=int,
+        default=5,
+        help="Maximum number of suggestions (default: 5)",
+    )
+    suggest_tags_parser.add_argument(
+        "--apply",
+        action="store_true",
+        help="Apply suggestions by adding them to the file",
+    )
+
+    suggest_links_parser = subparsers.add_parser(
+        "suggest-links", help="Suggest wikilinks for a note file using AI analysis"
+    )
+    suggest_links_parser.add_argument(
+        "file_path", help="Path to the note file to analyze"
+    )
+    suggest_links_parser.add_argument(
+        "--min-confidence",
+        type=float,
+        default=0.4,
+        help="Minimum confidence score (0.0-1.0, default: 0.4)",
+    )
+    suggest_links_parser.add_argument(
+        "--max-suggestions",
+        type=int,
+        default=10,
+        help="Maximum number of suggestions (default: 10)",
+    )
+    suggest_links_parser.add_argument(
+        "--apply",
+        action="store_true",
+        help="Apply suggestions by adding wikilinks to the file",
+    )
+    suggest_links_parser.add_argument(
+        "--show-bidirectional",
+        action="store_true",
+        help="Show which suggestions are bidirectional (both should link)",
+    )
+
+    detect_gaps_parser = subparsers.add_parser(
+        "detect-gaps", help="Detect knowledge gaps in the vault"
+    )
+
+    update_parser = subparsers.add_parser(
+        "update", help="Update existing memory/memories"
+    )
+
+    # Target selection (mutually exclusive)
+    target_group = update_parser.add_mutually_exclusive_group(required=True)
+    target_group.add_argument(
+        "memory_id", nargs="?", help="Memory ID to update (e.g., abc-123)"
+    )
+    target_group.add_argument(
+        "--filter", action="store_true", help="Update multiple memories using filters"
+    )
+
+    # Update fields
+    update_parser.add_argument("--title", help="New title")
+    update_parser.add_argument("--content", help="New content")
+    update_parser.add_argument(
+        "--type",
+        choices=[member.value for member in MemoryType],
+        help="New memory type",
+    )
+    update_parser.add_argument("--salience", type=float, help="New salience (0.0-1.0)")
+    update_parser.add_argument("--add-tags", nargs="*", help="Tags to add")
+    update_parser.add_argument("--remove-tags", nargs="*", help="Tags to remove")
+    update_parser.add_argument("--set-tags", nargs="*", help="Replace all tags")
+
+    # Filter options (when --filter is used)
+    update_parser.add_argument("--filter-tags", nargs="*", help="Filter by tags")
+    update_parser.add_argument(
+        "--filter-type",
+        choices=[member.value for member in MemoryType],
+        help="Filter by memory type",
+    )
+    update_parser.add_argument(
+        "--filter-min-salience", type=float, help="Filter by minimum salience"
+    )
+    update_parser.add_argument(
+        "--filter-max-salience", type=float, help="Filter by maximum salience"
+    )
+
+    # Safety options
+    update_parser.add_argument(
+        "--dry-run", action="store_true", help="Preview changes without applying"
+    )
+    update_parser.add_argument(
+        "--confirm", action="store_true", help="Skip confirmation prompt"
+    )
+
+    delete_parser = subparsers.add_parser(
+        "delete", help="Delete existing memory/memories"
+    )
+
+    # Target selection (mutually exclusive)
+    delete_target_group = delete_parser.add_mutually_exclusive_group(required=True)
+    delete_target_group.add_argument(
+        "memory_id", nargs="?", help="Memory ID to delete (e.g., abc-123)"
+    )
+    delete_target_group.add_argument(
+        "--filter", action="store_true", help="Delete multiple memories using filters"
+    )
+
+    # Filter options (when --filter is used)
+    delete_parser.add_argument("--filter-tags", nargs="*", help="Filter by tags")
+    delete_parser.add_argument(
+        "--filter-type",
+        choices=[member.value for member in MemoryType],
+        help="Filter by memory type",
+    )
+    delete_parser.add_argument(
+        "--filter-min-salience", type=float, help="Filter by minimum salience"
+    )
+    delete_parser.add_argument(
+        "--filter-max-salience", type=float, help="Filter by maximum salience"
+    )
+
+    # Safety options
+    delete_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Preview deletions without removing files",
+    )
+    delete_parser.add_argument(
+        "--confirm", action="store_true", help="Skip confirmation prompt"
+    )
+
+    list_parser = subparsers.add_parser(
+        "list", help="List memories with filtering and formatting options"
+    )
+
+    # Filter options
+    list_parser.add_argument(
+        "--tags",
+        nargs="*",
+        default=[],
+        help="Filter by tags (space-separated, e.g., --tags python docker)",
+    )
+    list_parser.add_argument(
+        "--type",
+        choices=[member.value for member in MemoryType],
+        help="Filter by memory type",
+    )
+    list_parser.add_argument(
+        "--min-salience", type=float, help="Filter by minimum salience"
+    )
+    list_parser.add_argument(
+        "--max-salience", type=float, help="Filter by maximum salience"
+    )
+
+    # Sorting options
+    list_parser.add_argument(
+        "--sort-by",
+        choices=["title", "salience", "type", "created", "modified"],
+        help="Sort by field",
+    )
+    list_parser.add_argument(
+        "--reverse", action="store_true", help="Sort in descending order"
+    )
+
+    # Pagination options
+    list_parser.add_argument("--limit", type=int, help="Maximum number of results")
+    list_parser.add_argument("--offset", type=int, help="Number of results to skip")
+
+    # Output format
+    list_parser.add_argument(
+        "--format",
+        choices=["table", "json", "csv", "ids"],
+        default="table",
+        help="Output format (default: table)",
+    )
+
+    search_parser = subparsers.add_parser(
+        "search", help="Search memories using various strategies"
+    )
+
+    # Query parameter
+    search_parser.add_argument("query", help="Search query string")
+
+    # Search strategy
+    search_parser.add_argument(
+        "--strategy",
+        choices=["keyword", "semantic", "hybrid", "graph"],
+        default="hybrid",
+        help="Search strategy (default: hybrid)",
+    )
+
+    # Result options
+    search_parser.add_argument(
+        "--limit", type=int, default=10, help="Maximum number of results (default: 10)"
+    )
+    search_parser.add_argument(
+        "--min-salience", type=float, help="Minimum salience threshold"
+    )
+    search_parser.add_argument(
+        "--depth", type=int, default=2, help="Graph traversal depth (default: 2)"
+    )
+
+    # Scoring options
+    search_parser.add_argument(
+        "--boost-recent", action="store_true", help="Apply recency boost to scoring"
+    )
+    search_parser.add_argument(
+        "--keyword-weight", type=float, help="Weight for keyword scoring (0.0-1.0)"
+    )
+    search_parser.add_argument(
+        "--semantic-weight", type=float, help="Weight for semantic scoring (0.0-1.0)"
+    )
+
+    # Output format
+    search_parser.add_argument(
+        "--format",
+        choices=["table", "json", "detailed"],
+        default="table",
+        help="Output format (default: table)",
+    )
+    search_parser.add_argument(
+        "--show-scores", action="store_true", help="Show relevance scores in output"
+    )
+    search_parser.add_argument(
+        "--show-snippets", action="store_true", help="Show content snippets in output"
+    )
+
+    detect_gaps_parser.add_argument(
+        "--min-severity",
+        type=float,
+        default=0.3,
+        help="Minimum severity threshold (0.0-1.0, default: 0.3)",
+    )
+    detect_gaps_parser.add_argument(
+        "--max-gaps",
+        type=int,
+        default=20,
+        help="Maximum number of gaps to return (default: 20)",
+    )
+    detect_gaps_parser.add_argument(
+        "--gap-types",
+        nargs="*",
+        choices=["missing_topic", "weak_coverage", "isolated_note", "missing_link"],
+        help="Specific gap types to detect (optional)",
+    )
+    detect_gaps_parser.add_argument(
+        "--output",
+        choices=["text", "json"],
+        default="text",
+        help="Output format (default: text)",
+    )
+
+    analyze_knowledge_parser = subparsers.add_parser(
+        "analyze-knowledge", help="Perform comprehensive knowledge base analysis"
+    )
+    analyze_knowledge_parser.add_argument(
+        "--no-gaps",
+        action="store_true",
+        help="Exclude gap detection from analysis",
+    )
+    analyze_knowledge_parser.add_argument(
+        "--no-clusters",
+        action="store_true",
+        help="Exclude topic clustering from analysis",
+    )
+    analyze_knowledge_parser.add_argument(
+        "--no-paths",
+        action="store_true",
+        help="Exclude learning path suggestions from analysis",
+    )
+    analyze_knowledge_parser.add_argument(
+        "--output",
+        choices=["text", "json"],
+        default="text",
+        help="Output format (default: text)",
+    )
+
+    # Phase 2: Batch Operations
+    batch_create_parser = subparsers.add_parser(
+        "batch-create", help="Create multiple memories from JSON or CSV file"
+    )
+    batch_create_parser.add_argument(
+        "input_file", help="Path to JSON or CSV file containing memories"
+    )
+    batch_create_parser.add_argument(
+        "--format",
+        choices=["json", "csv"],
+        help="Input file format (auto-detected if not specified)",
+    )
+    batch_create_parser.add_argument(
+        "--dry-run", action="store_true", help="Preview memories without creating them"
+    )
+    batch_create_parser.add_argument(
+        "--auto-ingest",
+        action="store_true",
+        help="Automatically run ingest after creation",
+    )
+
+    batch_update_parser = subparsers.add_parser(
+        "batch-update", help="Update multiple memories from file or by filter"
+    )
+    batch_update_parser.add_argument(
+        "--input-file", help="Path to JSON/CSV file with updates"
+    )
+    batch_update_parser.add_argument("--filter-tags", nargs="*", help="Filter by tags")
+    batch_update_parser.add_argument(
+        "--filter-type",
+        choices=[member.value for member in MemoryType],
+        help="Filter by memory type",
+    )
+    batch_update_parser.add_argument(
+        "--set-salience", type=float, help="Set salience for all matched memories"
+    )
+    batch_update_parser.add_argument(
+        "--add-tags", nargs="*", help="Add tags to all matched memories"
+    )
+    batch_update_parser.add_argument(
+        "--dry-run", action="store_true", help="Preview updates without applying"
+    )
+    batch_update_parser.add_argument(
+        "--confirm", action="store_true", help="Skip confirmation prompt"
+    )
+
+    batch_delete_parser = subparsers.add_parser(
+        "batch-delete", help="Delete multiple memories from file or by filter"
+    )
+    batch_delete_parser.add_argument(
+        "--input-file", help="Path to file with memory IDs (one per line)"
+    )
+    batch_delete_parser.add_argument("--filter-tags", nargs="*", help="Filter by tags")
+    batch_delete_parser.add_argument(
+        "--filter-type",
+        choices=[member.value for member in MemoryType],
+        help="Filter by memory type",
+    )
+    batch_delete_parser.add_argument(
+        "--older-than", help="Delete memories older than N days (e.g., '90d')"
+    )
+    batch_delete_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Preview deletions without removing files",
+    )
+    batch_delete_parser.add_argument(
+        "--confirm", action="store_true", help="Skip confirmation prompt"
+    )
+
+    # Phase 3: Infrastructure
+    export_parser = subparsers.add_parser(
+        "export", help="Export vault to JSON, CSV, or markdown archive"
+    )
+    export_parser.add_argument("--output", required=True, help="Output file path")
+    export_parser.add_argument(
+        "--format",
+        choices=["json", "csv", "markdown", "zip"],
+        default="json",
+        help="Export format (default: json)",
+    )
+    export_parser.add_argument(
+        "--filter-tags", nargs="*", help="Export only memories with these tags"
+    )
+    export_parser.add_argument(
+        "--compress", action="store_true", help="Compress output (for json/csv)"
+    )
+
+    import_backup_parser = subparsers.add_parser(
+        "import-backup", help="Import memories from backup file"
+    )
+    import_backup_parser.add_argument(
+        "backup_file", help="Path to backup file (JSON or ZIP)"
+    )
+    import_backup_parser.add_argument(
+        "--merge",
+        action="store_true",
+        help="Merge with existing vault (default: replace)",
+    )
+    import_backup_parser.add_argument(
+        "--skip-duplicates",
+        action="store_true",
+        help="Skip memories that already exist",
+    )
+
+    backup_parser = subparsers.add_parser("backup", help="Create vault backup")
+    backup_parser.add_argument(
+        "--destination", required=True, help="Backup destination directory"
+    )
+    backup_parser.add_argument(
+        "--compress",
+        action="store_true",
+        default=True,
+        help="Compress backup (default: True)",
+    )
+    backup_parser.add_argument(
+        "--keep", type=int, default=10, help="Number of backups to keep (default: 10)"
+    )
+
+    config_parser = subparsers.add_parser(
+        "config", help="Manage configuration settings"
+    )
+    config_subparsers = config_parser.add_subparsers(
+        dest="config_command", required=True
+    )
+
+    config_set_parser = config_subparsers.add_parser(
+        "set", help="Set configuration value"
+    )
+    config_set_parser.add_argument("key", help="Configuration key")
+    config_set_parser.add_argument("value", help="Configuration value")
+
+    config_get_parser = config_subparsers.add_parser(
+        "get", help="Get configuration value"
+    )
+    config_get_parser.add_argument("key", help="Configuration key")
+
+    config_subparsers.add_parser("list", help="List all configuration")
+
+    config_profile_parser = config_subparsers.add_parser(
+        "profile", help="Manage profiles"
+    )
+    config_profile_parser.add_argument(
+        "action", choices=["create", "use", "list", "delete"]
+    )
+    config_profile_parser.add_argument("name", nargs="?", help="Profile name")
+
+    stats_parser = subparsers.add_parser(
+        "stats", help="Show vault statistics and insights"
+    )
+    stats_parser.add_argument(
+        "--detailed", action="store_true", help="Show detailed statistics"
+    )
+    stats_parser.add_argument(
+        "--format",
+        choices=["text", "json"],
+        default="text",
+        help="Output format (default: text)",
+    )
+
     args = parser.parse_args()
     kernel = MemoryKernel(args.vault)
 
@@ -615,11 +1110,35 @@ def main():
         return
 
     if args.command == "remember":
+        # Interactive mode: prompt for missing required fields
+        title = args.title
+        if not title:
+            title = input("Enter memory title: ").strip()
+            if not title:
+                print("Error: Title is required")
+                return
+
+        content = args.content
+        if not content:
+            print("Enter memory content (press Ctrl+D or Ctrl+Z when done):")
+            lines = []
+            try:
+                while True:
+                    line = input()
+                    lines.append(line)
+            except EOFError:
+                pass
+            content = "\n".join(lines).strip()
+            if not content:
+                print("Error: Content is required")
+                return
+
         path = kernel.remember(
-            title=args.title,
-            content=args.content,
+            title=title,
+            content=content,
             memory_type=MemoryType(args.type),
             tags=args.tags,
+            salience=args.salience,
         )
         print(f"Created memory: {path}")
         return
@@ -747,6 +1266,325 @@ def main():
         setup = MCPSetup(vault_path=args.vault)
         results = setup.verify_setup()
         setup.print_verification_results(results)
+        return
+
+    if args.command == "suggest-tags":
+        import asyncio
+        import re
+        from pathlib import Path
+
+        from .ai.auto_tagger import AutoTagger
+
+        async def _suggest():
+            file_path = Path(args.file_path)
+
+            if not file_path.exists():
+                print(f"Error: File not found: {file_path}")
+                return
+
+            if file_path.suffix.lower() not in [".md", ".txt"]:
+                print(
+                    f"Warning: File type {file_path.suffix} may not be optimal. Expected .md or .txt"
+                )
+
+            # Read file content
+            try:
+                content = file_path.read_text(encoding="utf-8")
+            except Exception as e:
+                print(f"Error reading file: {e}")
+                return
+
+            # Extract existing tags
+            existing_tags = re.findall(r"#(\w+)", content)
+
+            # Create tagger and get suggestions
+            tagger = AutoTagger(kernel, args.min_confidence, args.max_suggestions)
+            suggestions = await tagger.suggest_tags(
+                content, file_path.stem, existing_tags
+            )
+
+            if not suggestions:
+                print("\nNo tag suggestions found.")
+                return
+
+            # Display suggestions
+            print(f"\n=== Tag Suggestions for: {file_path.name} ===\n")
+            for i, s in enumerate(suggestions, 1):
+                bar = "=" * int(s.confidence * 10)
+                print(f"{i}. #{s.tag} {bar} {s.confidence:.0%}")
+                print(f"   {s.reason} ({s.source})\n")
+
+            # Apply if requested
+            if args.apply:
+                tags_line = " ".join(f"#{s.tag}" for s in suggestions)
+                new_content = content.rstrip() + f"\n\n{tags_line}\n"
+                try:
+                    file_path.write_text(new_content, encoding="utf-8")
+                    print(f"\n[OK] Applied {len(suggestions)} tags to {file_path.name}")
+                except Exception as e:
+                    print(f"\n[ERROR] Failed to apply tags: {e}")
+
+        asyncio.run(_suggest())
+        return
+
+    if args.command == "suggest-links":
+        import asyncio
+        import re
+        from pathlib import Path
+
+        from .ai.link_suggester import LinkSuggester
+
+        async def _suggest_links():
+            file_path = Path(args.file_path)
+
+            if not file_path.exists():
+                print(f"Error: File not found: {file_path}")
+                return
+
+            if file_path.suffix.lower() not in [".md", ".txt"]:
+                print(
+                    f"Warning: File type {file_path.suffix} may not be optimal. Expected .md or .txt"
+                )
+
+            # Read file content
+            try:
+                content = file_path.read_text(encoding="utf-8")
+            except Exception as e:
+                print(f"Error reading file: {e}")
+                return
+
+            # Extract existing wikilinks
+            existing_links_pattern = re.compile(r"\[\[([^\]|]+)(?:\|[^\]]+)?\]\]")
+            existing_links = existing_links_pattern.findall(content)
+
+            # Create suggester and get suggestions
+            suggester = LinkSuggester(kernel, args.min_confidence, args.max_suggestions)
+            suggestions = await suggester.suggest_links(
+                content=content, title=file_path.stem, existing_links=existing_links
+            )
+
+            if not suggestions:
+                print("\nNo link suggestions found.")
+                return
+
+            # Display suggestions
+            print(f"\n=== Link Suggestions for: {file_path.name} ===\n")
+            for i, s in enumerate(suggestions, 1):
+                bar = "=" * int(s.confidence * 10)
+                bidirectional_marker = (
+                    " ⟷" if (args.show_bidirectional and s.bidirectional) else ""
+                )
+                print(
+                    f"{i}. [[{s.target_title}]] {bar} {s.confidence:.0%}{bidirectional_marker}"
+                )
+                print(f"   {s.reason} ({s.source})\n")
+
+            # Apply if requested
+            if args.apply:
+                # Add wikilinks at the end of the file
+                links_line = " ".join(f"[[{s.target_title}]]" for s in suggestions)
+                new_content = (
+                    content.rstrip() + f"\n\n## Suggested Links\n{links_line}\n"
+                )
+                try:
+                    file_path.write_text(new_content, encoding="utf-8")
+                    print(
+                        f"\n✓ Applied {len(suggestions)} link suggestions to {file_path.name}"
+                    )
+                except Exception as e:
+                    print(f"\n✗ Failed to apply links: {e}")
+
+        asyncio.run(_suggest_links())
+        return
+
+    if args.command == "detect-gaps":
+        import asyncio
+        import json
+
+        from .ai.gap_detector import GapDetector
+
+        async def _detect_gaps():
+            detector = GapDetector(
+                kernel,
+                min_severity=args.min_severity,
+                max_gaps=args.max_gaps,
+            )
+
+            gaps = await detector.detect_gaps()
+
+            # Filter by gap types if specified
+            if args.gap_types:
+                gaps = [g for g in gaps if g.gap_type in args.gap_types]
+
+            if args.output == "json":
+                # JSON output
+                output = {
+                    "success": True,
+                    "count": len(gaps),
+                    "gaps": [
+                        {
+                            "type": g.gap_type,
+                            "title": g.title,
+                            "description": g.description,
+                            "severity": round(g.severity, 2),
+                            "suggestions": g.suggestions,
+                            "related_notes": g.related_notes[:5],
+                        }
+                        for g in gaps
+                    ],
+                }
+                print(json.dumps(output, indent=2))
+            else:
+                # Text output
+                if not gaps:
+                    print("\n✓ No significant knowledge gaps detected!")
+                    return
+
+                print(f"\n=== Knowledge Gaps Detected ({len(gaps)}) ===\n")
+
+                for i, gap in enumerate(gaps, 1):
+                    severity_bar = "!" * int(gap.severity * 10)
+                    print(f"{i}. [{gap.gap_type.upper()}] {gap.title}")
+                    print(f"   Severity: {severity_bar} {gap.severity:.0%}")
+                    print(f"   {gap.description}\n")
+
+                    if gap.suggestions:
+                        print("   Suggestions:")
+                        for suggestion in gap.suggestions[:3]:
+                            print(f"   • {suggestion}")
+
+                    if gap.related_notes:
+                        print(f"   Related: {', '.join(gap.related_notes[:3])}")
+
+                    print()
+
+        asyncio.run(_detect_gaps())
+        return
+
+    if args.command == "search":
+        run_search_command(kernel, args)
+        return
+
+    if args.command == "update":
+        run_update_command(kernel, args)
+        return
+
+    if args.command == "delete":
+        run_delete_command(kernel, args)
+        return
+
+    if args.command == "list":
+        run_list_command(kernel, args)
+        return
+
+    if args.command == "batch-create":
+        run_batch_create_command(kernel, args)
+        return
+
+    if args.command == "batch-update":
+        run_batch_update_command(kernel, args)
+        return
+
+    if args.command == "batch-delete":
+        run_batch_delete_command(kernel, args)
+        return
+
+    if args.command == "export":
+        run_export_command(kernel, args)
+        return
+
+    if args.command == "import-backup":
+        run_import_backup_command(kernel, args)
+        return
+
+    if args.command == "backup":
+        run_backup_command(kernel, args)
+        return
+
+    if args.command == "config":
+        run_config_command(kernel, args)
+        return
+
+    if args.command == "stats":
+        run_stats_command(kernel, args)
+        return
+
+    if args.command == "analyze-knowledge":
+        import asyncio
+
+        import json
+
+        from .ai.gap_detector import GapDetector
+
+        async def _analyze():
+            detector = GapDetector(kernel)
+            analysis = await detector.analyze_knowledge_base()
+
+            # Filter components based on flags
+            if args.no_gaps:
+                analysis["gaps"] = []
+                analysis["summary"]["total_gaps"] = 0
+            if args.no_clusters:
+                analysis["clusters"] = []
+                analysis["summary"]["total_clusters"] = 0
+            if args.no_paths:
+                analysis["learning_paths"] = []
+                analysis["summary"]["total_paths"] = 0
+
+            if args.output == "json":
+                # JSON output
+                print(json.dumps(analysis, indent=2))
+            else:
+                # Text output
+                summary = analysis["summary"]
+                print("\n=== Knowledge Base Analysis ===\n")
+                print(f"Total Gaps: {summary['total_gaps']}")
+                print(f"Total Clusters: {summary['total_clusters']}")
+                print(f"Total Learning Paths: {summary['total_paths']}")
+
+                if summary.get("gap_types"):
+                    print("\nGaps by Type:")
+                    for gap_type, count in summary["gap_types"].items():
+                        if count > 0:
+                            print(f"  • {gap_type}: {count}")
+
+                if summary.get("avg_severity"):
+                    print(f"\nAverage Gap Severity: {summary['avg_severity']:.0%}")
+
+                # Show top gaps
+                if not args.no_gaps and analysis["gaps"]:
+                    print("\n=== Top Knowledge Gaps ===\n")
+                    for i, gap in enumerate(analysis["gaps"][:5], 1):
+                        print(f"{i}. [{gap['type']}] {gap['title']}")
+                        print(
+                            f"   Severity: {gap['severity']:.0%} - {gap['description']}\n"
+                        )
+
+                # Show clusters
+                if not args.no_clusters and analysis["clusters"]:
+                    print("=== Topic Clusters ===\n")
+                    for i, cluster in enumerate(analysis["clusters"][:5], 1):
+                        print(f"{i}. {cluster['name']} ({cluster['size']} notes)")
+                        print(f"   Keywords: {', '.join(cluster['keywords'][:5])}")
+                        print(
+                            f"   Density: {cluster['density']:.0%}, Coverage: {cluster['coverage']:.0%}\n"
+                        )
+
+                # Show learning paths
+                if not args.no_paths and analysis["learning_paths"]:
+                    print("=== Learning Paths ===\n")
+                    for i, path in enumerate(analysis["learning_paths"][:3], 1):
+                        print(f"{i}. {path['topic']} ({path['order']} path)")
+                        print(f"   Completeness: {path['completeness']:.0%}")
+                        print(f"   Notes: {len(path['notes'])}")
+                        if path["missing_steps"]:
+                            print(
+                                f"   Missing: {', '.join(path['missing_steps'][:2])}\n"
+                            )
+                        else:
+                            print()
+
+        asyncio.run(_analyze())
         return
 
 
