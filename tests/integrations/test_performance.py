@@ -185,4 +185,11 @@ class TestLRUCachePerformance:
         """Test that cache hit rate improves on repeated access."""
         # First parse all notes (cold cache)
         start = time.time()
-        for note in sample_notes[:20
+        for note in sample_notes[:20]:
+            parser.parse_file(note)
+        cold_duration = time.time() - start
+
+        # Parse same notes again (warm cache)
+        start = time.time()
+        for note in sample_notes[:20]:
+            parser.parse_
