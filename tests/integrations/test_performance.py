@@ -188,4 +188,3 @@ class TestLRUCachePerformance:
 
         # Parse same notes again (warm cache)
         start = time.time()
-        for note
