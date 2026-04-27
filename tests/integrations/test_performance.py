@@ -178,4 +178,14 @@ class TestLRUCachePerformance:
             cold_duration * 10, 5.0
         ), f"Warm cache ({warm_duration:.3f}s) unexpectedly slower than cold ({cold_duration:.3f}s)"
 
-    def test_cache_hit_rate
+    def test_cache_hit_rate(self, parser, sample_notes):
+        """Test that cache hit rate improves on repeated access."""
+        # First parse all notes (cold cache)
+        start = time.time()
+        for note in sample_notes[:20]:
+            parser.parse_file(note)
+        cold_duration = time.time() - start
+
+        # Parse same notes again (warm cache)
+        start = time.time()
+        for note
